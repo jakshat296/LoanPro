@@ -18,6 +18,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
 from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QMainWindow, QPlainTextEdit, QPushButton,
     QSizePolicy, QStackedWidget, QVBoxLayout, QWidget)
+
+from Custom_Widgets.QCustomSlideMenu import QCustomSlideMenu
+
 import resources_rc
 
 class Ui_MainWindow(object):
@@ -107,7 +110,7 @@ class Ui_MainWindow(object):
         self.horizontalLayout.setSpacing(0)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
-        self.leftmenu = QWidget(self.centralwidget)
+        self.leftmenu = QCustomSlideMenu(self.centralwidget)
         self.leftmenu.setObjectName(u"leftmenu")
         self.leftmenu.setMinimumSize(QSize(0, 0))
         self.verticalLayout_11 = QVBoxLayout(self.leftmenu)
@@ -846,7 +849,7 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout.addWidget(self.stackedWidget)
 
-        self.profilecont = QWidget(self.centralwidget)
+        self.profilecont = QCustomSlideMenu(self.centralwidget)
         self.profilecont.setObjectName(u"profilecont")
         self.profilecont.setMinimumSize(QSize(100, 0))
         self.verticalLayout_4 = QVBoxLayout(self.profilecont)
