@@ -4,15 +4,17 @@ import logging
 import socket
 import requests
 import random
+import joblib
 from retrying import retry
 from PySide6.QtCore import QTimer
 from datetime import datetime, timedelta
 from interface import *
 import mysql.connector
-from PySide6 import QtCharts
+from PySide6 import QtCharts, QtWidgets, QtCore, QtGui
 from PySide6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QValueAxis, QBarCategoryAxis
 from PySide6.QtWidgets import QVBoxLayout, QMessageBox, QCompleter
 from PySide6.QtCore import Qt, QStringListModel
+from PySide6.QtGui import QStandardItemModel, QStandardItem
 from decimal import Decimal
 from Custom_Widgets.Widgets import *  # Import the loadJsonStyle function
 
@@ -70,6 +72,11 @@ def capture_fingerprint():
     except KeyError as e:
         logging.error("Unexpected response format: %s", e)
         raise
+
+class AlignDelegate(QtWidgets.QStyledItemDelegate):
+    def initStyleOption(self, option, index):
+        super(AlignDelegate, self).initStyleOption(option, index)
+        option.displayAlignment = QtCore.Qt.AlignCenter
  
 
 class MainWindow(QMainWindow):
@@ -80,12 +87,14 @@ class MainWindow(QMainWindow):
  
          self.ui.dashbtn.clicked.connect(lambda: self.on_dashbtn_clicked())
          self.ui.addbtn.clicked.connect(lambda: self.on_addbtn_clicked())
-         self.ui.removebtn.clicked.connect(lambda: self.update_active_tab(self.ui.removebtn, 2))
-         self.ui.depositbtn.clicked.connect(lambda: self.update_active_tab(self.ui.depositbtn, 3))
+         self.ui.depositbtn.clicked.connect(lambda: self.on_depositbtn_clicked())
+         self.ui.removebtn.clicked.connect(lambda: self.on_removebtn_clicked())
          self.ui.viewbtn_2.clicked.connect(lambda: self.update_active_tab(self.ui.viewbtn_2, 4))
          self.ui.accountsbtn.clicked.connect(lambda: self.update_active_tab(self.ui.accountsbtn, 5))
          self.ui.pushButton_15.clicked.connect(lambda: self.add_fingerprint())
          self.ui.pushButton_14.clicked.connect(lambda: self.add_record())
+         self.ui.search_remove_2.clicked.connect(lambda: self.remove_record())
+         self.ui.search_remove_3.clicked.connect(lambda: self.delete_record())
          self.completer_1 = QCompleter()
          self.completer_1.setCaseSensitivity(Qt.CaseInsensitive)
          self.completer_1.popup().setStyleSheet("font-size: 30px") 
@@ -101,7 +110,58 @@ class MainWindow(QMainWindow):
          self.completer_3.popup().setStyleSheet("font-size: 30px") 
          self.ui.father_line.setCompleter(self.completer_3)
          self.ui.father_line.textChanged.connect(self.update_completer_3_model)
+         self.completer_4 = QCompleter()
+         self.completer_4.setCaseSensitivity(Qt.CaseInsensitive)
+         self.completer_4.popup().setStyleSheet("font-size: 30px") 
+         self.ui.remove_line_4.setCompleter(self.completer_4)
+         self.ui.remove_line_4.textChanged.connect(self.update_completer_4_model)
+         self.completer_5 = QCompleter()
+         self.completer_5.setCaseSensitivity(Qt.CaseInsensitive)
+         self.completer_5.popup().setStyleSheet("font-size: 30px") 
+         self.ui.remove_line.setCompleter(self.completer_5)
+         self.ui.remove_line.textChanged.connect(self.update_completer_5_model)
+         self.ui.search_remove_4.clicked.connect(self.handle_deposit_search)
+         self.ui.search_remove.clicked.connect(self.handle_remove_search)
+         self.ui.search_remove_5.clicked.connect(self.handle_deposit)
+         self.ui.tabWidget_2.currentChanged.connect(self.on_tab_changed)
+         self.ui.tabWidget.currentChanged.connect(self.on_tab_changed_remove)
+         self.ui.tableWidget_exist_6.setStyleSheet("QTableWidget {font-size: 30px;}")
+         self.ui.tableWidget_exist_6.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
+         delegate = AlignDelegate(self.ui.tableWidget_exist_6)
+         self.ui.tableWidget_exist_6.setItemDelegate(delegate)
+         self.ui.tableWidget_exist_6.horizontalHeader().setDefaultSectionSize(170)
+         self.ui.tableWidget_exist_5.setStyleSheet("QTableWidget {font-size: 30px;}")
+         self.ui.tableWidget_exist_5.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
+         delegate = AlignDelegate(self.ui.tableWidget_exist_5)
+         self.ui.tableWidget_exist_5.setItemDelegate(delegate)
+         self.ui.tableWidget_exist_5.horizontalHeader().setDefaultSectionSize(170)
+         delegate = AlignDelegate()
+         self.ui.tableView_2.setItemDelegate(delegate)
+         self.model = QStandardItemModel()
+         self.model.setHorizontalHeaderLabels(["Date", "Amount"])
+         self.ui.tableView_2.setModel(self.model)
+         # Set the horizontal header properties
+         header = self.ui.tableView_2.horizontalHeader()
+         header.setSectionResizeMode(QHeaderView.Stretch)
+         header.setStretchLastSection(True)
+         # Set custom font for the horizontal header
+         font = QFont()
+         font.setPointSize(20)  # Set the font size to 14
+         header.setFont(font)
 
+         delegate = AlignDelegate()
+         self.ui.tableView.setItemDelegate(delegate)
+         self.model_2 = QStandardItemModel()
+         self.model_2.setHorizontalHeaderLabels(["Date", "Amount"])
+         self.ui.tableView.setModel(self.model_2)
+         # Set the horizontal header properties
+         header = self.ui.tableView.horizontalHeader()
+         header.setSectionResizeMode(QHeaderView.Stretch)
+         header.setStretchLastSection(True)
+         # Set custom font for the horizontal header
+         font = QFont()
+         font.setPointSize(20)  # Set the font size to 14
+         header.setFont(font)
          loadJsonStyle(self, self.ui)
          self.update_active_tab(self.ui.dashbtn, 0)
          self.update_labels()
@@ -117,6 +177,30 @@ class MainWindow(QMainWindow):
         self.update_active_tab(self.ui.addbtn, 1)
         today_date = datetime.today().strftime('%Y-%m-%d')
         self.ui.date_line.setText(today_date)
+
+    def on_removebtn_clicked(self):
+        self.update_active_tab(self.ui.removebtn, 2)
+        today_date = datetime.today().strftime('%Y-%m-%d')
+        self.ui.remove_line_7.setText(today_date)
+        self.ui.remove_line.clear()
+        self.ui.remove_line_8.clear()
+        self.ui.tableWidget_exist_5.setRowCount(0)
+        self.ui.comboBox.setCurrentIndex(0)
+        self.ui.tabWidget.setCurrentIndex(0)
+        self.model_2.clear()
+        self.model_2.setHorizontalHeaderLabels(["Deposit Date", "Amount"])
+
+    def on_depositbtn_clicked(self):
+        self.update_active_tab(self.ui.depositbtn, 3)
+        today_date = datetime.today().strftime('%Y-%m-%d')
+        self.ui.remove_line_5.setText(today_date)
+        self.ui.remove_line_4.clear()
+        self.ui.remove_line_6.clear()
+        self.ui.tableWidget_exist_6.setRowCount(0)
+        self.ui.comboBox_2.setCurrentIndex(0)
+        self.ui.tabWidget_2.setCurrentIndex(0)
+        self.model.clear()
+        self.model.setHorizontalHeaderLabels(["Deposit Date", "Amount"])
  
     def update_active_tab(self, active_button, page_index):
         buttons = [self.ui.dashbtn, self.ui.addbtn, self.ui.removebtn, self.ui.depositbtn, self.ui.viewbtn_2, self.ui.accountsbtn]
@@ -412,6 +496,7 @@ class MainWindow(QMainWindow):
         except Exception as ex:
                QMessageBox.critical(self, "Error", f"{ex}")
 
+
     def update_completer_2_model(self):
         try:
                         connection = self.connect_to_database()
@@ -422,7 +507,7 @@ class MainWindow(QMainWindow):
                         cursor.execute(query)
                         result = cursor.fetchall()                        
                         # Update the completer's model
-                        model = QStringListModel([str(i[0]) for i in result], self.completer_1)
+                        model = QStringListModel([str(i[0]) for i in result], self.completer_2)
                         self.completer_2.setModel(model)
         except Exception as ex:
                QMessageBox.critical(self, "Error", f"{ex}")
@@ -437,8 +522,51 @@ class MainWindow(QMainWindow):
                         cursor.execute(query)
                         result = cursor.fetchall()                        
                         # Update the completer's model
-                        model = QStringListModel([str(i[0]) for i in result], self.completer_1)
+                        model = QStringListModel([str(i[0]) for i in result], self.completer_3)
                         self.completer_3.setModel(model)
+        except Exception as ex:
+               QMessageBox.critical(self, "Error", f"{ex}")
+
+    def update_completer_4_model(self):
+        try:
+                        connection = self.connect_to_database()
+                        cursor = connection.cursor()
+                        current = self.ui.comboBox_2.currentText()
+                        text = self.ui.remove_line_4.text()
+                        if current == "Name":
+                                query = f'SELECT distinct(name) FROM all_records WHERE name LIKE "{text}%"'
+                        elif current == "Location":
+                                query = f'SELECT distinct(location) FROM all_records WHERE location LIKE "{text}%"'
+                        elif current == "Fingerprint":
+                                query = f'SELECT distinct(location) FROM all_records WHERE location LIKE "{text}%"'        
+                        #execute and fetch data
+                        cursor.execute(query)
+                        result = cursor.fetchall()                        
+                        # Update the completer's model
+                        model = QStringListModel([str(i[0]) for i in result], self.completer_4)
+                        self.completer_4.setModel(model)
+        except Exception as ex:
+               QMessageBox.critical(self, "Error", f"{ex}")
+
+
+    def update_completer_5_model(self):
+        try:
+                        connection = self.connect_to_database()
+                        cursor = connection.cursor()
+                        current = self.ui.comboBox.currentText()
+                        text = self.ui.remove_line.text()
+                        if current == "Name":
+                                query = f'SELECT distinct(name) FROM all_records WHERE name LIKE "{text}%"'
+                        elif current == "Location":
+                                query = f'SELECT distinct(location) FROM all_records WHERE location LIKE "{text}%"'
+                        elif current == "Fingerprint":
+                                query = f'SELECT distinct(location) FROM all_records WHERE location LIKE "{text}%"'        
+                        #execute and fetch data
+                        cursor.execute(query)
+                        result = cursor.fetchall()                        
+                        # Update the completer's model
+                        model = QStringListModel([str(i[0]) for i in result], self.completer_5)
+                        self.completer_5.setModel(model)
         except Exception as ex:
                QMessageBox.critical(self, "Error", f"{ex}")
 
@@ -537,6 +665,334 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", str(e))
         finally:
             QTimer.singleShot(6000, lambda: self.ui.pushButton_15.setEnabled(True))
+
+    def fingerprint_match(self, isoTemplateToMatch, fingerprint_data):
+        try:
+            connection = self.connect_to_database()
+            cursor = connection.cursor()
+            ipv4_address = get_ipv4_address()
+            res2 = requests.post(f'https://{ipv4_address}:8003/mfs100/verify', data={
+                "ProbTemplate": fingerprint_data,
+                "GalleryTemplate": isoTemplateToMatch,
+                "BioType": "FMR"
+            }, verify=False)
+            matchResponse = res2.json()
+            if matchResponse.get('Status'):
+                query = "select user_id from fingerprint_table where fingerprint_data = %s"
+                cursor.execute(query, (fingerprint_data,))
+                id = cursor.fetchone()
+                return id[0]
+        except Exception as e:
+            QMessageBox.critical(None, "Error", str(e))
+        return None
+
+    def search_records(self, criteria, value):
+        connection = self.connect_to_database()
+        if connection:
+            cursor = connection.cursor()
+            try:
+                query = ""
+                if criteria == "Name":
+                    query = "SELECT * FROM all_records WHERE Name LIKE %s"
+                    cursor.execute(query, (f"%{value}%",))
+                elif criteria == "Location":
+                    query = "SELECT * FROM all_records WHERE Location LIKE %s"
+                    cursor.execute(query, (f"%{value}%",))
+                elif criteria == "Date":
+                    query = "SELECT * FROM all_records WHERE DATE(date) = %s"
+                    cursor.execute(query, (value,))
+                elif criteria == "Fingerprint":
+                    isoTemplateToMatch = capture_fingerprint()
+                    print("akshat")
+                    query = "SELECT fingerprint_data FROM fingerprint_table WHERE user_id IN (SELECT user_id FROM all_records WHERE Location LIKE %s)"
+                    print("akshat")
+                    cursor.execute(query, (f"%{value}%",))
+                    print("akshat")
+                    result = cursor.fetchall()
+                    
+                    ilist = []
+                    
+                    # Use joblib to parallelize fingerprint matching
+                    num_jobs = 30
+                    parallel = joblib.Parallel(n_jobs=num_jobs, backend="threading")  # Use threading backend for PyQt
+                    fingerprint_matches = parallel(
+                        joblib.delayed(self.fingerprint_match)(isoTemplateToMatch, i[0]) for i in result
+                    )
+                    # Collect the matching user IDs
+                    ilist = [id for id in fingerprint_matches if id is not None]
+
+                    if len(ilist) == 0:
+                        QMessageBox.information(None, "No Match", f"No matching fingerprints found for customer in {value}")
+                    else:
+                        user_ids_str = ",".join(str(user_id) for user_id in ilist)
+                        query = f"SELECT * FROM all_records WHERE user_id IN ({user_ids_str})"
+                        cursor.execute(query)
+
+                result = cursor.fetchall()
+                return result
+            except Exception as e:
+                QMessageBox.critical(None, "Database Error", f"Error while searching records: {e}")
+                return []
+            finally:
+                cursor.close()
+                connection.close()
+        else:
+            QMessageBox.critical(None, "Database Error", "Failed to connect to the database.")
+            return []
+
+    def display_deposit_results(self,results):
+        self.ui.tableWidget_exist_6.setRowCount(len(results))
+        for row, record in enumerate(results):
+            for column, item in enumerate(record):
+                self.ui.tableWidget_exist_6.setItem(row, column, QTableWidgetItem(str(item)))
+
+
+    # Handle search button click
+    def handle_deposit_search(self):
+        criteria = self.ui.comboBox_2.currentText()
+        value = self.ui.remove_line_4.text().strip()
+        results = self.search_records(criteria, value)
+        self.display_deposit_results(results)
+
+    def handle_remove_search(self):
+        criteria = self.ui.comboBox.currentText()
+        value = self.ui.remove_line.text().strip()
+        results = self.search_records(criteria, value)
+        self.display_remove_results(results)
+
+    def display_remove_results(self,results):
+        self.ui.tableWidget_exist_5.setRowCount(len(results))
+        for row, record in enumerate(results):
+            for column, item in enumerate(record):
+                self.ui.tableWidget_exist_5.setItem(row, column, QTableWidgetItem(str(item)))
+    
+    # Get selected user_id from the table
+    def get_selected_user_id(self):
+        current_row = self.ui.tableWidget_exist_6.currentRow()
+        if current_row != -1:
+            return self.ui.tableWidget_exist_6.item(current_row, 0).text()
+        return None
+    
+    # Get selected user_id from the table
+    def get_selected_user_id_remove(self):
+        current_row = self.ui.tableWidget_exist_5.currentRow()
+        if current_row != -1:
+            return self.ui.tableWidget_exist_5.item(current_row, 0).text()
+        return None
+
+    def add_deposit_to_database(self, user_id, deposit_amount):
+        connection = self.connect_to_database()
+        if connection:
+            cursor = connection.cursor()
+            try:
+                # Insert the deposit into the deposits table
+                deposit_date = self.ui.remove_line_5.text().strip()
+                cursor.execute("INSERT INTO deposits (user_id, deposit_amount, deposit_date) VALUES (%s, %s, %s)", 
+                            (user_id, deposit_amount, deposit_date))
+
+                # Update the total deposit and last update in the all_records table
+                query = f'''UPDATE all_records
+                        SET deposit = IFNULL(deposit, 0) + {deposit_amount},
+                        deposit_date = "{deposit_date}"
+                        WHERE user_id = {user_id};'''
+                cursor.execute(query)
+                connection.commit()
+
+                QMessageBox.information(None, "Success", "Deposit recorded successfully!")
+                self.ui.remove_line_4.clear()
+                self.ui.remove_line_6.clear()
+                self.ui.tableWidget_exist_6.setRowCount(0)
+                query = f"SELECT * FROM all_records WHERE user_id = {user_id}"
+                cursor.execute(query)
+                result = cursor.fetchall()
+                self.display_deposit_results(result)
+            except Exception as e:
+                QMessageBox.critical(None, "Database Error", f"Error while updating deposit: {e}")
+            finally:
+                cursor.close()
+                connection.close()
+        else:
+            QMessageBox.critical(None, "Database Error", "Failed to connect to the database.")
+
+    # Handle deposit button click
+    def handle_deposit(self):
+        user_id = self.get_selected_user_id()
+        deposit_amount = int(self.ui.remove_line_6.text().strip())
+        if deposit_amount:
+            self.add_deposit_to_database(user_id, deposit_amount)
+            self.update_deposit_history(user_id)
+
+    def get_deposit_history_from_database(self, user_id):
+        connection = self.connect_to_database()
+        if connection:
+            cursor = connection.cursor()
+            try:
+                cursor.execute("SELECT deposit_date, deposit_amount FROM deposits WHERE user_id = %s ORDER BY deposit_date", 
+                            (user_id,))
+                result = cursor.fetchall()
+                return result
+            except Exception as e:
+                QMessageBox.critical(None, "Database Error", f"Error while fetching deposit history: {e}")
+                return []
+            finally:
+                cursor.close()
+                connection.close()
+        else:
+            QMessageBox.critical(None, "Database Error", "Failed to connect to the database.")
+            return []
+
+    def display_deposit_history(self, user_id):
+        deposit_history = self.get_deposit_history_from_database(user_id)
+        self.model.clear()
+        self.model.setHorizontalHeaderLabels(["Deposit_Date", "Amount"])
+        for row, item in enumerate(deposit_history):
+            date_item = QStandardItem(item[0].strftime("%Y-%m-%d"))
+            amount_item = QStandardItem(str(item[1]))
+            self.model.appendRow([date_item, amount_item])
+
+    def display_deposit_history_remove(self, user_id):
+        deposit_history = self.get_deposit_history_from_database(user_id)
+        self.model_2.clear()
+        self.model_2.setHorizontalHeaderLabels(["Deposit_Date", "Amount"])
+        for row, item in enumerate(deposit_history):
+            date_item = QStandardItem(item[0].strftime("%Y-%m-%d"))
+            amount_item = QStandardItem(str(item[1]))
+            self.model_2.appendRow([date_item, amount_item])
+
+    # Update deposit history in the table view
+    def update_deposit_history(self, user_id):
+        deposit_history = self.get_deposit_history_from_database(user_id)
+        self.model.clear()
+        self.model.setHorizontalHeaderLabels(["Deposit_Date", "Amount"])
+        for row, item in enumerate(deposit_history):
+            date_item = QStandardItem(item[0].strftime("%Y-%m-%d"))
+            amount_item = QStandardItem(str(item[1]))
+            self.model.appendRow([date_item, amount_item])
+
+    # Update deposit history in the table view
+    def update_deposit_history_remove(self, user_id):
+        deposit_history = self.get_deposit_history_from_database(user_id)
+        self.model_2.clear()
+        self.model_2.setHorizontalHeaderLabels(["Deposit_Date", "Amount"])
+        for row, item in enumerate(deposit_history):
+            date_item = QStandardItem(item[0].strftime("%Y-%m-%d"))
+            amount_item = QStandardItem(str(item[1]))
+            self.model_2.appendRow([date_item, amount_item])
+
+    # Handle tab change event
+    def on_tab_changed(self, index):
+        if index == 1:  # Deposit history tab
+            user_id = self.get_selected_user_id()
+            if user_id:
+                self.update_deposit_history(user_id)
+    
+    # Handle tab change event
+    def on_tab_changed_remove(self, index):
+        if index == 1:  # Deposit history tab
+            user_id = self.get_selected_user_id_remove()
+            if user_id:
+                self.update_deposit_history_remove(user_id)
+
+    def remove_record(self):
+        # Check if interest is provided
+        if not self.ui.remove_line_8.text().strip():
+            QMessageBox.critical(None, "Error", "Interest is required")
+            return
+
+        interest = self.ui.remove_line_8.text().strip()
+        user_id = self.get_selected_user_id_remove()
+
+        if not user_id:
+            QMessageBox.critical(None, "Error", "User ID is required")
+            return
+        
+        try:
+            current_date = datetime.today().strftime('%Y-%m-%d')
+            deposit_amt = self.get_deposit_amount(user_id)
+            date_edit = self.ui.remove_line_7.text().strip()
+
+            if deposit_amt is not None:
+                self.update_daily_assessment(deposit_amt, current_date)
+
+            self.insert_into_removed_records(user_id)
+            self.delete_from_fingerprint_table(user_id)
+            self.delete_from_all_records(user_id)
+            self.update_removed_records_interest(user_id, interest)
+            self.update_removed_records_date(user_id, date_edit)
+            QMessageBox.information(None, "Success", "Record removed successfully")
+            self.handle_remove_search()
+        except Exception as e:
+            QMessageBox.critical(None, "Database Error", str(e))
+
+    def delete_record(self):
+        try:
+            user_id = self.get_selected_user_id_remove()
+            self.delete_from_fingerprint_table(user_id)
+            self.delete_from_all_records(user_id)
+            QMessageBox.information(None, "Success", "Record deleted successfully")
+            self.on_removebtn_clicked()
+        except Exception as e:
+            QMessageBox.critical(None, "Database Error", str(e))
+
+
+    def get_deposit_amount(self, user_id):
+        connection = self.connect_to_database()
+        cursor = connection.cursor()
+        query = 'SELECT deposit FROM all_records WHERE user_id = %s'
+        cursor.execute(query, (user_id,))
+        deposit_amt = cursor.fetchone()
+        return int(deposit_amt[0]) if deposit_amt and deposit_amt[0] is not None else None
+
+    def update_daily_assessment(self, deposit_amt, current_date):
+        connection = self.connect_to_database()
+        cursor = connection.cursor()
+        query = '''UPDATE daily_assessment
+                   SET deposit_debit = COALESCE(deposit_debit, 0) + %s
+                   WHERE date = %s;'''
+        values = (deposit_amt, current_date)
+        cursor.execute(query, values)
+        connection.commit()
+
+    def insert_into_removed_records(self, user_id):
+        connection = self.connect_to_database()
+        cursor = connection.cursor()
+        query = f'''INSERT INTO removed_records (user_id, amount, name, father_name, location, Date, Type, Weight) 
+                   SELECT user_id, amount, name, father_name, location, Date, Type, Weight 
+                   FROM all_records 
+                   WHERE user_id = %s;'''
+        cursor.execute(query, (user_id,))
+        connection.commit()
+
+    def delete_from_fingerprint_table(self, user_id):
+        connection = self.connect_to_database()
+        cursor = connection.cursor()
+        query = 'DELETE FROM fingerprint_table WHERE user_id = %s;'
+        cursor.execute(query, (user_id,))
+        connection.commit()
+        print("akshat")
+
+    def delete_from_all_records(self, user_id):
+        connection = self.connect_to_database()
+        cursor = connection.cursor()
+        query = 'DELETE FROM all_records WHERE user_id = %s;'
+        cursor.execute(query, (user_id,))
+        connection.commit()
+
+    def update_removed_records_interest(self, user_id, interest):
+        connection = self.connect_to_database()
+        cursor = connection.cursor()
+        query = 'UPDATE removed_records SET interest = %s WHERE user_id = %s'
+        values = (interest, user_id)
+        cursor.execute(query, values)
+        connection.commit()
+
+    def update_removed_records_date(self, user_id, date_edit):
+        connection = self.connect_to_database()
+        cursor = connection.cursor()
+        query = 'UPDATE removed_records SET removed_date = %s WHERE user_id = %s'
+        values = (date_edit, user_id)
+        cursor.execute(query, values)
+        connection.commit()
 
 
     def clear(self):
