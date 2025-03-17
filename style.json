@@ -1,0 +1,97 @@
+{
+    "QCard": [
+        {
+            "cards": [
+                "card1_4",
+                "card2_4",
+                "card3_4",
+                "card4_4"
+            ],
+            "shadow": [
+                {
+                    "color": "#000",
+                    "blurRadius": 10,
+                    "xOffset": 0,
+                    "yOffset": 0
+                }
+            ]
+        },
+        {
+            "cards": [
+                "widget_16",
+                "dailyreport_4"
+            ],
+            "shadow": [
+                {
+                    "color": "#000",
+                    "blurRadius": 5,
+                    "xOffset": 0,
+                    "yOffset": 0
+                }
+            ]
+        },
+        {
+            "cards": [
+                "add_recordwidget",
+                "frame_2",
+                "frame_3",
+                "frame_8",
+                "frame_13",
+                "frame_20",
+                "tableWidget_exist_8",
+                "frame_29",
+                "tableView_3",
+                "widget_19",
+                "frame_28"
+            ],
+            "shadow": [
+                {
+                    "color": "#000",
+                    "blurRadius": 10,
+                    "xOffset": 0,
+                    "yOffset": 0
+                }
+            ]
+        }
+    ],
+    "QCustomSlideMenu": [
+        {
+            "name": "leftmenu",
+            "defaultSize": [
+                {
+                    "width": 0,
+                    "height": "parent"
+                }
+            ],
+            "collapsedSize": [
+                {
+                    "width": 0,
+                    "height": "parent"
+                }
+            ],
+            "expandedSize": [
+                {
+                    "width": 230,
+                    "height": "parent"
+                }
+            ],
+            "toggleButton": [
+                {
+                    "buttonName": "menubtn_4",
+                    "icons": [
+                        {
+                            "whenMenuIsCollapsed": "://whiteicons//assets//icons//blue//menu.svg",
+                            "whenMenuIsExpanded": "://whiteicons//assets//icons//blue//chevron-left.svg"
+                        }
+                    ]
+                }
+            ],
+            "menuTransitionAnimation": [
+                {
+                    "animationDuration": 1000,
+                    "animationEasingCurve": "OutBack"
+                }
+            ]
+        }
+    ]
+}
