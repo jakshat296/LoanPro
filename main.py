@@ -1,14 +1,20 @@
 import sys
+import os
+import subprocess
 import locale
 import logging
 import socket
 import requests
 import random
 import joblib
+import string
+import ctypes
 from retrying import retry
 from PySide6.QtCore import QTimer
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from interface import *
+from add_cash import LoginDialog2
+from remove_cash import LoginDialog
 import mysql.connector
 from PySide6 import QtCharts, QtWidgets, QtCore, QtGui
 from PySide6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QValueAxis, QBarCategoryAxis
@@ -89,94 +95,170 @@ class MainWindow(QMainWindow):
          self.ui.addbtn.clicked.connect(lambda: self.on_addbtn_clicked())
          self.ui.depositbtn.clicked.connect(lambda: self.on_depositbtn_clicked())
          self.ui.removebtn.clicked.connect(lambda: self.on_removebtn_clicked())
-         self.ui.viewbtn_2.clicked.connect(lambda: self.update_active_tab(self.ui.viewbtn_2, 4))
+         self.ui.viewbtn_2.clicked.connect(lambda: self.on_viewbtn_clicked())
          self.ui.accountsbtn.clicked.connect(lambda: self.update_active_tab(self.ui.accountsbtn, 5))
          self.ui.pushButton_15.clicked.connect(lambda: self.add_fingerprint())
          self.ui.pushButton_14.clicked.connect(lambda: self.add_record())
          self.ui.search_remove_2.clicked.connect(lambda: self.remove_record())
+         self.ui.tableWidget_exist_5.cellClicked.connect(self.calculate_and_display_interest)
          self.ui.search_remove_3.clicked.connect(lambda: self.delete_record())
-         self.completer_1 = QCompleter()
-         self.completer_1.setCaseSensitivity(Qt.CaseInsensitive)
-         self.completer_1.popup().setStyleSheet("font-size: 30px") 
-         self.ui.location_line.setCompleter(self.completer_1)
-         self.ui.location_line.textChanged.connect(self.update_completer_1_model)
-         self.completer_2 = QCompleter()
-         self.completer_2.setCaseSensitivity(Qt.CaseInsensitive)
-         self.completer_2.popup().setStyleSheet("font-size: 30px") 
-         self.ui.name_line.setCompleter(self.completer_2)
-         self.ui.name_line.textChanged.connect(self.update_completer_2_model)
-         self.completer_3 = QCompleter()
-         self.completer_3.setCaseSensitivity(Qt.CaseInsensitive)
-         self.completer_3.popup().setStyleSheet("font-size: 30px") 
-         self.ui.father_line.setCompleter(self.completer_3)
-         self.ui.father_line.textChanged.connect(self.update_completer_3_model)
-         self.completer_4 = QCompleter()
-         self.completer_4.setCaseSensitivity(Qt.CaseInsensitive)
-         self.completer_4.popup().setStyleSheet("font-size: 30px") 
-         self.ui.remove_line_4.setCompleter(self.completer_4)
-         self.ui.remove_line_4.textChanged.connect(self.update_completer_4_model)
-         self.completer_5 = QCompleter()
-         self.completer_5.setCaseSensitivity(Qt.CaseInsensitive)
-         self.completer_5.popup().setStyleSheet("font-size: 30px") 
-         self.ui.remove_line.setCompleter(self.completer_5)
-         self.ui.remove_line.textChanged.connect(self.update_completer_5_model)
+         self.ui.invesbtn_5.clicked.connect(lambda: self.on_invesbtn_5_clicked())
+         self.ui.returnbtn_5.clicked.connect(lambda: self.on_returnbtn_5_clicked())
+         self.ui.interestbtn_5.clicked.connect(lambda: self.on_interestbtn_5_clicked())
+         self.ui.search_remove_6.clicked.connect(lambda: self.view_all_records())
+         self.ui.search_remove_7.clicked.connect(lambda: self.view_removed_records())
          self.ui.search_remove_4.clicked.connect(self.handle_deposit_search)
          self.ui.search_remove.clicked.connect(self.handle_remove_search)
          self.ui.search_remove_5.clicked.connect(self.handle_deposit)
          self.ui.tabWidget_2.currentChanged.connect(self.on_tab_changed)
          self.ui.tabWidget.currentChanged.connect(self.on_tab_changed_remove)
-         self.ui.tableWidget_exist_6.setStyleSheet("QTableWidget {font-size: 30px;}")
-         self.ui.tableWidget_exist_6.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
+         self.ui.search_remove_8.clicked.connect(self.fetch_user_details)
+         self.ui.pushButton_16.clicked.connect(self.update_user_details)
+         self.ui.search_remove_9.clicked.connect(self.accounts_report)
+         self.ui.addcash_4.clicked.connect(self.show_add_cash_dialog)
+         self.ui.removecash_4.clicked.connect(self.show_remove_cash_dialog)
+         self.ui.generatebtn.clicked.connect(self.generate_report)
+         self.ui.backupbtn.clicked.connect(self.backup_sql)
+         #QCompleter 1 =====================================================
+         self.completer_1 = QCompleter()
+         self.completer_1.setCaseSensitivity(Qt.CaseInsensitive)
+         self.completer_1.popup().setStyleSheet("font-size: 30px") 
+         self.ui.location_line.setCompleter(self.completer_1)
+         self.ui.location_line.textChanged.connect(self.update_completer_1_model)
+         #======================================================================
+         #QCompleter 2 =========================================================
+         self.completer_2 = QCompleter()
+         self.completer_2.setCaseSensitivity(Qt.CaseInsensitive)
+         self.completer_2.popup().setStyleSheet("font-size: 30px") 
+         self.ui.name_line.setCompleter(self.completer_2)
+         self.ui.name_line.textChanged.connect(self.update_completer_2_model)
+         #======================================================================
+         #QCompleter 3 =========================================================
+         self.completer_3 = QCompleter()
+         self.completer_3.setCaseSensitivity(Qt.CaseInsensitive)
+         self.completer_3.popup().setStyleSheet("font-size: 30px") 
+         self.ui.father_line.setCompleter(self.completer_3)
+         self.ui.father_line.textChanged.connect(self.update_completer_3_model)
+         #======================================================================
+         #QCompleter 4 =========================================================
+         self.completer_4 = QCompleter()
+         self.completer_4.setCaseSensitivity(Qt.CaseInsensitive)
+         self.completer_4.popup().setStyleSheet("font-size: 30px") 
+         self.ui.remove_line_4.setCompleter(self.completer_4)
+         self.ui.remove_line_4.textChanged.connect(self.update_completer_4_model)
+         #======================================================================
+         #QCompleter 5 =========================================================
+         self.completer_5 = QCompleter()
+         self.completer_5.setCaseSensitivity(Qt.CaseInsensitive)
+         self.completer_5.popup().setStyleSheet("font-size: 30px") 
+         self.ui.remove_line.setCompleter(self.completer_5)
+         self.ui.remove_line.textChanged.connect(self.update_completer_5_model)
+         #======================================================================
+         #QCompleter 6 =========================================================
+         self.completer_6 = QCompleter()
+         self.completer_6.setCaseSensitivity(Qt.CaseInsensitive)
+         self.completer_6.popup().setStyleSheet("font-size: 30px") 
+         self.ui.remove_line_9.setCompleter(self.completer_6)
+         self.ui.remove_line_9.textChanged.connect(self.update_completer_6_model)
+         #======================================================================
+         #QCompleter 7 =========================================================
+         self.completer_7 = QCompleter()
+         self.completer_7.setCaseSensitivity(Qt.CaseInsensitive)
+         self.completer_7.popup().setStyleSheet("font-size: 30px") 
+         self.ui.remove_line_10.setCompleter(self.completer_7)
+         self.ui.remove_line_10.textChanged.connect(self.update_completer_7_model)
+         #======================================================================
+         #Table Widget Delegate ===============================================
          delegate = AlignDelegate(self.ui.tableWidget_exist_6)
          self.ui.tableWidget_exist_6.setItemDelegate(delegate)
+         self.ui.tableWidget_exist_6.setStyleSheet("QTableWidget {font-size: 30px;}")
+         self.ui.tableWidget_exist_6.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
          self.ui.tableWidget_exist_6.horizontalHeader().setDefaultSectionSize(170)
-         self.ui.tableWidget_exist_5.setStyleSheet("QTableWidget {font-size: 30px;}")
-         self.ui.tableWidget_exist_5.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
+         #==========================================================================
+         #Table Widget Delegate ===============================================
          delegate = AlignDelegate(self.ui.tableWidget_exist_5)
          self.ui.tableWidget_exist_5.setItemDelegate(delegate)
+         self.ui.tableWidget_exist_5.setStyleSheet("QTableWidget {font-size: 30px;}")
+         self.ui.tableWidget_exist_5.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
          self.ui.tableWidget_exist_5.horizontalHeader().setDefaultSectionSize(170)
+         #==========================================================================
+         #Table Widget Delegate ===============================================
+         delegate = AlignDelegate(self.ui.tableWidget_exist_7)
+         self.ui.tableWidget_exist_7.setItemDelegate(delegate)
+         self.ui.tableWidget_exist_7.setStyleSheet("QTableWidget {font-size: 30px;}")
+         self.ui.tableWidget_exist_7.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
+         self.ui.tableWidget_exist_7.horizontalHeader().setDefaultSectionSize(170)
+         #==========================================================================
+         #Table Widget Delegate ===============================================
+         delegate = AlignDelegate(self.ui.tableWidget_exist_8)
+         self.ui.tableWidget_exist_8.setItemDelegate(delegate)
+         self.ui.tableWidget_exist_8.setStyleSheet("QTableWidget {font-size: 30px;}")
+         self.ui.tableWidget_exist_8.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
+         self.ui.tableWidget_exist_8.horizontalHeader().setDefaultSectionSize(170)
+         #==========================================================================
+         #Table View Set up and Delegate ===============================================
          delegate = AlignDelegate()
          self.ui.tableView_2.setItemDelegate(delegate)
          self.model = QStandardItemModel()
          self.model.setHorizontalHeaderLabels(["Date", "Amount"])
          self.ui.tableView_2.setModel(self.model)
-         # Set the horizontal header properties
          header = self.ui.tableView_2.horizontalHeader()
          header.setSectionResizeMode(QHeaderView.Stretch)
          header.setStretchLastSection(True)
-         # Set custom font for the horizontal header
          font = QFont()
-         font.setPointSize(20)  # Set the font size to 14
+         font.setPointSize(20)
          header.setFont(font)
-
+         #==========================================================================
+         #Table View Set up and Delegate ===============================================
          delegate = AlignDelegate()
          self.ui.tableView.setItemDelegate(delegate)
          self.model_2 = QStandardItemModel()
          self.model_2.setHorizontalHeaderLabels(["Date", "Amount"])
          self.ui.tableView.setModel(self.model_2)
-         # Set the horizontal header properties
          header = self.ui.tableView.horizontalHeader()
          header.setSectionResizeMode(QHeaderView.Stretch)
          header.setStretchLastSection(True)
-         # Set custom font for the horizontal header
          font = QFont()
          font.setPointSize(20)  # Set the font size to 14
          header.setFont(font)
+         #==========================================================================
+         #Table View Set up and Delegate ===============================================
+         delegate = AlignDelegate()
+         self.ui.tableView_3.setItemDelegate(delegate)
+         self.model_3 = QStandardItemModel()
+         self.model_3.setHorizontalHeaderLabels(["Date", "Amount"])
+         self.ui.tableView_3.setModel(self.model_3)
+         self.ui.tableView_3.setStyleSheet("QTableView {\n"
+"    font: 18pt 'Segoe UI';\n"
+"}\n")
+         header = self.ui.tableView_3.horizontalHeader()
+         header.setSectionResizeMode(QHeaderView.Stretch)
+         header.setStretchLastSection(True)
+         font = QFont()
+         font.setPointSize(20)  # Set the font size to 14
+         header.setFont(font)
+         #==========================================================================
+         #Loading Main Functionalities ===============================================
          loadJsonStyle(self, self.ui)
          self.update_active_tab(self.ui.dashbtn, 0)
+         self.insert_current_date()
+         self.generate_report()
          self.update_labels()
          self.update_charts()
          self.show()
 
     def on_dashbtn_clicked(self):
         self.update_active_tab(self.ui.dashbtn, 0)
+        self.generate_report()
         self.update_labels()
         self.update_charts()
 
     def on_addbtn_clicked(self):
         self.update_active_tab(self.ui.addbtn, 1)
+        self.clear()
         today_date = datetime.today().strftime('%Y-%m-%d')
         self.ui.date_line.setText(today_date)
+
 
     def on_removebtn_clicked(self):
         self.update_active_tab(self.ui.removebtn, 2)
@@ -201,7 +283,61 @@ class MainWindow(QMainWindow):
         self.ui.tabWidget_2.setCurrentIndex(0)
         self.model.clear()
         self.model.setHorizontalHeaderLabels(["Deposit Date", "Amount"])
- 
+
+    def on_viewbtn_clicked(self):
+         self.update_active_tab(self.ui.viewbtn_2, 4)
+         self.ui.remove_line_9.clear()
+         self.ui.remove_line_10.clear()
+         self.ui.remove_line_11.clear()
+         self.ui.comboBox_3.setCurrentIndex(0)
+         self.ui.comboBox_4.setCurrentIndex(0)
+         self.ui.tableWidget_exist_7.setRowCount(0)
+         self.ui.tableWidget_exist_8.setRowCount(0)
+         self.ui.stackedWidget_2.setCurrentIndex(0)
+
+    def on_invesbtn_5_clicked(self):
+        self.ui.stackedWidget_2.setCurrentIndex(0)
+
+    def on_returnbtn_5_clicked(self):
+        self.ui.stackedWidget_2.setCurrentIndex(1)
+
+    def on_interestbtn_5_clicked(self):
+        self.ui.stackedWidget_2.setCurrentIndex(2)
+
+    def on_accountsbtn_clicked(self):
+        self.ui.stackedWidget.setCurrentIndex(5)
+        self.ui.comboBox_5.setCurrentIndex(0)
+
+    def show_add_cash_dialog(self):
+        dialog = LoginDialog2()
+        dialog.setWindowModality(Qt.ApplicationModal)
+        
+        # Center the dialog on the screen
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.geometry()
+        dialog_geometry = dialog.geometry()
+        x = (screen_geometry.width() - dialog_geometry.width()) // 2
+        y = (screen_geometry.height() - dialog_geometry.height()) // 2
+        dialog.move(x, y)
+        
+        dialog.login_button.clicked.connect(lambda: self.add_cash(dialog))
+        dialog.exec_()
+
+    def show_remove_cash_dialog(self):
+        dialog_1 = LoginDialog()
+        dialog_1.setWindowModality(Qt.ApplicationModal)
+        
+        # Center the dialog on the screen
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.geometry()
+        dialog_1_geometry = dialog_1.geometry()
+        x = (screen_geometry.width() - dialog_1_geometry.width()) // 2
+        y = (screen_geometry.height() - dialog_1_geometry.height()) // 2
+        dialog_1.move(x, y)
+        
+        dialog_1.login_button_1.clicked.connect(lambda: self.remove_cash(dialog_1))
+        dialog_1.exec_()
+
     def update_active_tab(self, active_button, page_index):
         buttons = [self.ui.dashbtn, self.ui.addbtn, self.ui.removebtn, self.ui.depositbtn, self.ui.viewbtn_2, self.ui.accountsbtn]
         icons_inactive = {
@@ -481,94 +617,98 @@ class MainWindow(QMainWindow):
             self.show_message_box("Error", f"An error occurred while updating charts: {e}")
 
     
-    def update_completer_1_model(self):
+    def update_completer_model(self, completer, line_edit, table, column, combo_box=None):
         try:
-                        connection = self.connect_to_database()
-                        cursor = connection.cursor()
-                        text = self.ui.location_line.text()
-                        query = f'SELECT distinct(location) FROM all_records WHERE location LIKE "{text}%"'
-                        #execute and fetch data
-                        cursor.execute(query)
-                        result = cursor.fetchall()                        
-                        # Update the completer's model
-                        model = QStringListModel([str(i[0]) for i in result], self.completer_1)
-                        self.completer_1.setModel(model)
-        except Exception as ex:
-               QMessageBox.critical(self, "Error", f"{ex}")
+            connection = self.connect_to_database()
+            cursor = connection.cursor()
+            text = line_edit.text().strip()
 
+            if combo_box:
+                current = combo_box.currentText()
+                if current == "Name":
+                    query = f'SELECT DISTINCT(name) FROM {table} WHERE name LIKE "{text}%"'
+                elif current == "Location":
+                    query = f'SELECT DISTINCT(location) FROM {table} WHERE location LIKE "{text}%"'
+                elif current == "Fingerprint":
+                    query = f'SELECT DISTINCT(location) FROM {table} WHERE location LIKE "{text}%"'
+                else:
+                    query = None
+            else:
+                query = f'SELECT DISTINCT({column}) FROM {table} WHERE {column} LIKE "{text}%"'
+            
+            if query:
+                cursor.execute(query)
+                result = cursor.fetchall()
+                model = QStringListModel([str(i[0]) for i in result], completer)
+                completer.setModel(model)
+            else:
+                # If no query is executed, set an empty model for the completer
+                completer.setModel(QStringListModel([], completer))
+        except Exception as ex:
+            QMessageBox.critical(self, "Error", f"{ex}")
+        finally:
+            cursor.close()
+            connection.close()
+
+    def update_completer_1_model(self):
+        self.update_completer_model(
+            completer=self.completer_1,
+            line_edit=self.ui.location_line,
+            table='all_records',
+            column='location'
+        )
 
     def update_completer_2_model(self):
-        try:
-                        connection = self.connect_to_database()
-                        cursor = connection.cursor()
-                        text = self.ui.name_line.text()
-                        query = f'SELECT distinct(name) FROM all_records WHERE Name LIKE "{text}%"'
-                        #execute and fetch data
-                        cursor.execute(query)
-                        result = cursor.fetchall()                        
-                        # Update the completer's model
-                        model = QStringListModel([str(i[0]) for i in result], self.completer_2)
-                        self.completer_2.setModel(model)
-        except Exception as ex:
-               QMessageBox.critical(self, "Error", f"{ex}")
+        self.update_completer_model(
+            completer=self.completer_2,
+            line_edit=self.ui.name_line,
+            table='all_records',
+            column='name'
+        )
 
     def update_completer_3_model(self):
-        try:
-                        connection = self.connect_to_database()
-                        cursor = connection.cursor()
-                        text = self.ui.father_line.text()
-                        query = f'SELECT distinct(father_name) FROM all_records WHERE father_name LIKE "{text}%"'
-                        #execute and fetch data
-                        cursor.execute(query)
-                        result = cursor.fetchall()                        
-                        # Update the completer's model
-                        model = QStringListModel([str(i[0]) for i in result], self.completer_3)
-                        self.completer_3.setModel(model)
-        except Exception as ex:
-               QMessageBox.critical(self, "Error", f"{ex}")
+        self.update_completer_model(
+            completer=self.completer_3,
+            line_edit=self.ui.father_line,
+            table='all_records',
+            column='father_name'
+        )
 
     def update_completer_4_model(self):
-        try:
-                        connection = self.connect_to_database()
-                        cursor = connection.cursor()
-                        current = self.ui.comboBox_2.currentText()
-                        text = self.ui.remove_line_4.text()
-                        if current == "Name":
-                                query = f'SELECT distinct(name) FROM all_records WHERE name LIKE "{text}%"'
-                        elif current == "Location":
-                                query = f'SELECT distinct(location) FROM all_records WHERE location LIKE "{text}%"'
-                        elif current == "Fingerprint":
-                                query = f'SELECT distinct(location) FROM all_records WHERE location LIKE "{text}%"'        
-                        #execute and fetch data
-                        cursor.execute(query)
-                        result = cursor.fetchall()                        
-                        # Update the completer's model
-                        model = QStringListModel([str(i[0]) for i in result], self.completer_4)
-                        self.completer_4.setModel(model)
-        except Exception as ex:
-               QMessageBox.critical(self, "Error", f"{ex}")
-
+        self.update_completer_model(
+            completer=self.completer_4,
+            line_edit=self.ui.remove_line_4,
+            table='all_records',
+            column='location',  # Default column, will be overridden by comboBox_2
+            combo_box=self.ui.comboBox_2
+        )
 
     def update_completer_5_model(self):
-        try:
-                        connection = self.connect_to_database()
-                        cursor = connection.cursor()
-                        current = self.ui.comboBox.currentText()
-                        text = self.ui.remove_line.text()
-                        if current == "Name":
-                                query = f'SELECT distinct(name) FROM all_records WHERE name LIKE "{text}%"'
-                        elif current == "Location":
-                                query = f'SELECT distinct(location) FROM all_records WHERE location LIKE "{text}%"'
-                        elif current == "Fingerprint":
-                                query = f'SELECT distinct(location) FROM all_records WHERE location LIKE "{text}%"'        
-                        #execute and fetch data
-                        cursor.execute(query)
-                        result = cursor.fetchall()                        
-                        # Update the completer's model
-                        model = QStringListModel([str(i[0]) for i in result], self.completer_5)
-                        self.completer_5.setModel(model)
-        except Exception as ex:
-               QMessageBox.critical(self, "Error", f"{ex}")
+        self.update_completer_model(
+            completer=self.completer_5,
+            line_edit=self.ui.remove_line,
+            table='all_records',
+            column='location',  # Default column, will be overridden by comboBox
+            combo_box=self.ui.comboBox
+        )
+
+    def update_completer_6_model(self):
+        self.update_completer_model(
+            completer=self.completer_6,
+            line_edit=self.ui.remove_line_9,
+            table='all_records',
+            column='location',  # Default column, will be overridden by comboBox_3
+            combo_box=self.ui.comboBox_3
+        )
+
+    def update_completer_7_model(self):
+        self.update_completer_model(
+            completer=self.completer_7,
+            line_edit=self.ui.remove_line_10,
+            table='removed_records',
+            column='location',  # Default column, will be overridden by comboBox_4
+            combo_box=self.ui.comboBox_4
+        )
 
     def generate_unique_user_id(self):
         connection = self.connect_to_database()
@@ -739,6 +879,33 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.critical(None, "Database Error", "Failed to connect to the database.")
             return []
+        
+    def search_removed_records(self, criteria, value):
+        connection = self.connect_to_database()
+        if connection:
+            cursor = connection.cursor()
+            try:
+                query = ""
+                if criteria == "Name":
+                    query = "SELECT * FROM removed_records WHERE Name LIKE %s"
+                    cursor.execute(query, (f"%{value}%",))
+                elif criteria == "Location":
+                    query = "SELECT * FROM removed_records WHERE Location LIKE %s"
+                    cursor.execute(query, (f"%{value}%",))
+                elif criteria == "Date":
+                    query = "SELECT * FROM removed_records WHERE Removed_DATE(date) = %s"
+                    cursor.execute(query, (value,))
+                result = cursor.fetchall()
+                return result
+            except Exception as e:
+                QMessageBox.critical(None, "Database Error", f"Error while searching records: {e}")
+                return []
+            finally:
+                cursor.close()
+                connection.close()
+        else:
+            QMessageBox.critical(None, "Database Error", "Failed to connect to the database.")
+            return []
 
     def display_deposit_results(self,results):
         self.ui.tableWidget_exist_6.setRowCount(len(results))
@@ -893,6 +1060,41 @@ class MainWindow(QMainWindow):
             if user_id:
                 self.update_deposit_history_remove(user_id)
 
+    def calculate_and_display_interest(self):
+        connection = self.connect_to_database()
+        user_id = self.get_selected_user_id_remove()
+        if connection:
+            cursor = connection.cursor()
+            try:
+                # Retrieve the initial date and amount for the user
+                query = "SELECT Date, amount FROM all_records WHERE user_id = %s"
+                cursor.execute(query, (user_id,))
+                result = cursor.fetchone()
+                
+                if result:
+                    initial_date, amount = result
+                    current_date = datetime.now().date()
+                    
+                    # Calculate the number of days between the initial date and the current date
+                    time_diff = (current_date - initial_date).days
+                    time_in_years = time_diff / 365
+                    interest_rate = 0.36
+                    
+                    # Calculate the simple interest (36% annually)
+                    interest_rate = 0.36
+                    interest = amount * interest_rate * time_in_years
+                    interest = str(round(interest))
+                    
+                    # Set the calculated interest to the lineEdit
+                    self.ui.remove_line_8.setText(f"{interest}")
+                else:
+                    QMessageBox.warning(self, "Error", "No record found for the selected user.")
+            except Exception as e:
+                self.show_message_box("Database Error", f"Error while calculating interest: {e}")
+            finally:
+                cursor.close()
+                connection.close()
+
     def remove_record(self):
         # Check if interest is provided
         if not self.ui.remove_line_8.text().strip():
@@ -916,6 +1118,7 @@ class MainWindow(QMainWindow):
 
             self.insert_into_removed_records(user_id)
             self.delete_from_fingerprint_table(user_id)
+            self.delete_from_deposits_table(user_id)
             self.delete_from_all_records(user_id)
             self.update_removed_records_interest(user_id, interest)
             self.update_removed_records_date(user_id, date_edit)
@@ -969,7 +1172,13 @@ class MainWindow(QMainWindow):
         query = 'DELETE FROM fingerprint_table WHERE user_id = %s;'
         cursor.execute(query, (user_id,))
         connection.commit()
-        print("akshat")
+
+    def delete_from_deposits_table(self, user_id):
+        connection = self.connect_to_database()
+        cursor = connection.cursor()
+        query = 'DELETE FROM deposits WHERE user_id = %s;'
+        cursor.execute(query, (user_id,))
+        connection.commit()
 
     def delete_from_all_records(self, user_id):
         connection = self.connect_to_database()
@@ -994,6 +1203,424 @@ class MainWindow(QMainWindow):
         cursor.execute(query, values)
         connection.commit()
 
+    def display_all_records(self, results):
+        self.ui.tableWidget_exist_7.setRowCount(len(results))
+        for row, record in enumerate(results):
+            for column, item in enumerate(record):
+                self.ui.tableWidget_exist_7.setItem(row, column, QTableWidgetItem(str(item)))
+         
+
+    def view_all_records(self):
+        criteria = self.ui.comboBox_3.currentText()
+        value = self.ui.remove_line_9.text().strip()
+        results = self.search_records(criteria, value)
+        self.display_all_records(results)
+
+    def display_removed_records(self, results):
+        self.ui.tableWidget_exist_8.setRowCount(len(results))
+        for row, record in enumerate(results):
+            for column, item in enumerate(record):
+                self.ui.tableWidget_exist_8.setItem(row, column, QTableWidgetItem(str(item)))
+         
+
+    def view_removed_records(self):
+        criteria = self.ui.comboBox_4.currentText()
+        values = self.ui.remove_line_10.text().strip()
+        results = self.search_removed_records(criteria, values)
+        self.display_removed_records(results)
+
+    def fetch_user_details(self):
+        user_id = self.ui.remove_line_11.text().strip()
+        if not user_id:
+            QMessageBox.warning(self, "Input Error", "Please enter a User ID.")
+            return
+        
+        connection = self.connect_to_database()
+        if connection:
+            cursor = connection.cursor()
+            try:
+                query = "SELECT name, father_name, location, amount, type, date, weight FROM all_records WHERE user_id = %s"
+                cursor.execute(query, (user_id,))
+                result = cursor.fetchone()
+                
+                if result:
+                    name, father_name, location, amount, type, date, weight = result
+                    self.ui.name_line_3.setText(name)
+                    self.ui.father_line_3.setText(father_name)
+                    self.ui.location_line_3.setText(location)
+                    self.ui.amount_line_3.setText(str(amount))
+                    self.ui.jewellery_line_3.setText(type)
+                    self.ui.date_line_3.setText(date.strftime('%Y-%m-%d'))  # Assuming date is a date object
+                    self.ui.weight_line_3.setText(str(weight))
+                else:
+                    QMessageBox.warning(self, "Error", "No record found for the provided User ID.")
+            except Exception as e:
+                self.show_message_box("Database Error", f"Error while fetching user details: {e}")
+            finally:
+                cursor.close()
+                connection.close()
+
+    def update_user_details(self):
+        user_id = self.ui.remove_line_11.text().strip()
+        if not user_id:
+            QMessageBox.warning(self, "Input Error", "Please enter a User ID.")
+            return
+        
+        name = self.ui.name_line_3.text().strip()
+        father_name = self.ui.father_line_3.text().strip()
+        location = self.ui.location_line_3.text().strip()
+        amount = self.ui.amount_line_3.text().strip()
+        type = self.ui.jewellery_line_3.text().strip()
+        date = self.ui.date_line_3.text().strip()
+        weight = self.ui.weight_line_3.text().strip()
+
+        if not all([name, father_name, location, amount, type, date, weight]):
+            QMessageBox.warning(self, "Input Error", "Please fill in all fields.")
+            return
+
+        connection = self.connect_to_database()
+        if connection:
+            cursor = connection.cursor()
+            try:
+                query = """
+                UPDATE all_records SET 
+                name = %s, father_name = %s, location = %s, amount = %s, type = %s, date = %s, weight = %s 
+                WHERE user_id = %s
+                """
+                values = (name, father_name, location, amount, type, date, weight, user_id)
+                cursor.execute(query, values)
+                connection.commit()
+                QMessageBox.information(self, "Success", "Record updated successfully.")
+                self.clear_alter()
+            except Exception as e:
+                self.show_message_box("Database Error", f"Error while updating user details: {e}")
+            finally:
+                cursor.close()
+                connection.close()
+
+    def accounts_report(self):
+        try:
+                connection = self.connect_to_database()
+                cursor = connection.cursor() 
+                current = self.ui.comboBox_5.currentText()
+                from_date = self.ui.dateEdit.date().toString("yyyy-MM-dd")
+                to_date = self.ui.dateEdit_2.date().toString("yyyy-MM-dd")
+
+                if current == "Investment":                                                     
+                        # Modify the SQL query to match your specific query
+                        query1 = f"""SELECT SUM(total_amount) AS combined_sum
+FROM (
+    SELECT SUM(amount) AS total_amount FROM all_records WHERE date BETWEEN "{from_date}" AND "{to_date}"
+    UNION ALL
+    SELECT SUM(amount) AS total_amount FROM removed_records WHERE date BETWEEN "{from_date}" AND "{to_date}"
+) AS combined_records;
+"""
+                        cursor.execute(query1)
+                        total_in = cursor.fetchone()
+                        total_in = int(total_in[0])
+                        locale.setlocale(locale.LC_ALL, 'en_IN')
+                        total_in = locale.format_string("%d", total_in, grouping=True)
+                        self.ui.lineEdit_2.setText(f"{total_in}")
+                        self.ui.label_9.setText(f"Investment from {from_date} to {to_date}")
+                        query = f"""
+                        SELECT date, SUM(amount) AS total_amount
+                        FROM (
+                        SELECT date, amount FROM all_records
+                        UNION ALL
+                        SELECT date, amount FROM removed_records
+                        ) AS combined_records
+                        WHERE date BETWEEN "{from_date}" AND "{to_date}"
+                        GROUP BY date
+                        ORDER BY date;
+                        """
+
+                elif current == "Returns":                                                     
+                        # Modify the SQL query to match your specific query
+                        query1 = f"""select sum(amount+interest) from removed_records
+                        WHERE removed_date BETWEEN "{from_date}" AND "{to_date}" """
+                        cursor.execute(query1)
+                        total_re = cursor.fetchone()
+                        total_re = int(total_re[0])
+                        locale.setlocale(locale.LC_ALL, 'en_IN')
+                        total_re = locale.format_string("%d", total_re, grouping=True)
+                        self.ui.lineEdit_2.setText(f"{total_re}")
+                        self.ui.label_9.setText(f"Returns from {from_date} to {to_date}")
+                        query = f"""
+                        SELECT removed_date, SUM(amount+interest) as "amount"
+                        FROM removed_records
+                        WHERE removed_date BETWEEN "{from_date}" AND "{to_date}"
+                        GROUP BY removed_date
+                        order by removed_date
+                        """
+
+                elif current == "Interest":                                                     
+                        # Modify the SQL query to match your specific query
+                        query1 = f"""select sum(interest) from removed_records
+                        WHERE removed_date BETWEEN "{from_date}" AND "{to_date}" """
+                        cursor.execute(query1)
+                        total_te = cursor.fetchone()
+                        total_te = int(total_te[0])
+                        locale.setlocale(locale.LC_ALL, 'en_IN')
+                        total_te = locale.format_string("%d", total_te, grouping=True)
+                        self.ui.lineEdit_2.setText(f"{total_te}")
+                        self.ui.label_9.setText(f"Interest Earned from {from_date} to {to_date}")
+                        query = f"""
+                        SELECT removed_date, SUM(interest) as "amount"
+                        FROM removed_records
+                        WHERE removed_date BETWEEN "{from_date}" AND "{to_date}"
+                        GROUP BY removed_date
+                        order by removed_date
+                        """
+
+                cursor.execute(query)
+                data = cursor.fetchall()
+                self.model_3.clear()
+                self.model_3.setHorizontalHeaderLabels(["Date", "Amount"])
+                for row, item in enumerate(data):
+                        date_item = QStandardItem(item[0].strftime("%Y-%m-%d"))
+                        amount_item = QStandardItem(str(item[1]))
+                        self.model_3.appendRow([date_item, amount_item])
+
+
+        except Exception as ex:
+                self.show_message_box("Database Error", f"Error while updating report: {ex}")
+
+        finally:
+                cursor.close()
+                connection.close()
+
+    #function to fetch previous record
+    def insert_current_date(self):
+        connection = self.connect_to_database()
+        cursor = connection.cursor()
+
+        current_date = datetime.today().strftime('%Y-%m-%d')
+        query = f'SELECT DATE_SUB("{current_date}", INTERVAL 1 DAY) AS PreviousDate;'
+        cursor.execute(query)
+        previous_date = cursor.fetchone()
+        previous_date = str(previous_date[0])
+        query = f'SELECT COUNT(*) FROM daily_assessment WHERE date = "{current_date}"'
+        cursor.execute(query)
+        count = cursor.fetchone()[0]
+        cursor.execute(f'delete From daily_assessment where date < "{previous_date}"')
+        connection.commit()
+        if count == 0:
+            # Insert the current date
+            cursor.execute(f'INSERT INTO daily_assessment (date) VALUES ("{current_date}")')
+            connection.commit()
+        else:
+               pass
+        
+    def add_cash(self, dialog):
+        try:
+            connection = self.connect_to_database()
+            cursor = connection.cursor()
+            amount_text = dialog.password_label.text()
+            if amount_text == "":
+                self.show_message_box("Error", "Please Enter Amount Of Cash")
+            else:
+                amount = int(amount_text)
+                current_date = datetime.today().strftime('%Y-%m-%d')
+                try:
+                    query = '''UPDATE daily_assessment
+                               SET added_cash = COALESCE(added_cash, 0) + %s
+                               WHERE date = %s;'''
+                    values = (amount, current_date)
+                    cursor.execute(query, values)
+                    connection.commit()
+                    QMessageBox.information(self, "Success", "Cash Added successfully.")
+                    dialog.close()
+                except Exception as exception:
+                    self.show_message_box("Error", f"{exception}")
+        except Exception as exception1:
+            self.show_message_box("Error", f"{exception1}")
+
+    def remove_cash(self, dialog_1):
+        try:
+            connection = self.connect_to_database()
+            cursor = connection.cursor()
+            amount_text = dialog_1.password_label_1.text()
+            if amount_text == "":
+                self.show_message_box("Error", "Please Enter Amount Of Cash")
+            else:
+                amount = int(amount_text)
+                current_date = datetime.today().strftime('%Y-%m-%d')
+                try:
+                    query = '''UPDATE daily_assessment
+                               SET removed_cash = COALESCE(added_cash, 0) + %s
+                               WHERE date = %s;'''
+                    values = (amount, current_date)
+                    cursor.execute(query, values)
+                    connection.commit()
+                    QMessageBox.information(self, "Success", "Cash Removed successfully.")
+                    dialog_1.close()
+                except Exception as exception:
+                    self.show_message_box("Error", f"{exception}")
+        except Exception as exception1:
+            self.show_message_box("Error", f"{exception1}")
+
+    def get_available_drive_letter(self):
+        used_drive_letters = set()
+        for drive in string.ascii_uppercase:
+            drive_type = ctypes.windll.kernel32.GetDriveTypeW(f"{drive}:\\")
+            if drive_type == 2:  # Drive is a removable storage (like USB)
+                used_drive_letters.add(drive)
+        return used_drive_letters
+
+    def generate_report(self):
+        try:
+                connection = self.connect_to_database()
+                cursor = connection.cursor()
+                date = datetime.today().strftime('%Y-%m-%d')
+                query = f'select sum(amount) from all_records where date = "{date}" '
+                cursor.execute(query)
+                investment = cursor.fetchone()
+                self.investment = str(investment[0])
+                if self.investment == "None":
+                       self.investment = int(0)
+                else:
+                       self.investment = int(investment[0])
+                # Query for returns
+                query = f'select sum(amount+interest) from removed_records where removed_date = "{date}";'
+                cursor.execute(query)
+                returns = cursor.fetchone()
+                self.returns = str(returns[0])
+                if self.returns == "None":
+                       self.returns = int(0)
+                else:
+                       self.returns = int(returns[0])
+                # Query for added cash
+                query = f'select added_cash from daily_assessment where date = "{date}" '
+                cursor.execute(query)
+                added_cash = cursor.fetchone()
+                self.added_cash = str(added_cash[0])
+                if self.added_cash == "None":
+                       self.added_cash = int(0)
+                else:
+                       self.added_cash = int(added_cash[0])
+                # Query for removed cash
+                query = f'select removed_cash from daily_assessment where date = "{date}" '
+                cursor.execute(query)
+                removed_cash = cursor.fetchone()
+                self.removed_cash = str(removed_cash[0])
+                if self.removed_cash == "None":
+                       self.removed_cash = int(0)
+                else:
+                       self.removed_cash = int(removed_cash[0])
+                # Query for deposit debit
+                query = f'select deposit_debit from daily_assessment where date = "{date}" '
+                cursor.execute(query)
+                deposit_debit = cursor.fetchone()
+                self.deposit_debit = str(deposit_debit[0])
+                if self.deposit_debit == "None":
+                       self.deposit_debit = int(0)
+                else:
+                       self.deposit_debit = int(deposit_debit[0])
+                #query for deposit credit
+                query = f'select sum(deposit) from all_records where deposit_date = "{date}" '
+                cursor.execute(query)
+                deposit_credit = cursor.fetchone()
+                self.deposit_credit = str(deposit_credit[0])
+                if self.deposit_credit == "None":
+                       self.deposit_credit = int(0)
+                else:
+                       self.deposit_credit = int(deposit_credit[0])
+                #query for total cash balance
+                query = f'SELECT DATE_SUB("{date}", INTERVAL 1 DAY) AS PreviousDate;'
+                cursor.execute(query)
+                previous_date = cursor.fetchone()
+                previous_date = str(previous_date[0])
+                query = f'select count(*) from daily_assessment where date = "{previous_date}"'
+                cursor.execute(query)
+                cash_balance = cursor.fetchone()
+                cash_balance = str(cash_balance[0])
+                if cash_balance != "1":
+                       self.cash_balance = int(0)
+                else:
+                       query = f'select left_cash from daily_assessment where date = "{previous_date}"'
+                       cursor.execute(query)
+                       cash_balance = cursor.fetchone()
+                       cash_balance_str = str(cash_balance)
+                       if cash_balance_str[1:5] == "None":
+                              self.cash_balance = int(0)
+                       else:
+                                self.cash_balance = int(cash_balance[0])
+                # Final Cash Balance
+                left_cash = self.added_cash+self.cash_balance +self.returns+self.deposit_credit-self.removed_cash-self.investment-self.deposit_debit
+                self.left_cash = left_cash
+                query = f'update daily_assessment set left_cash = {self.left_cash} where date = "{date}"'
+                cursor.execute(query)
+                connection.commit()
+                report_template = (
+            "<pre>"
+            "Daily Assessment Report\n"
+            "============================\n"
+            "Cash Summary\n"
+            "----------------------------\n"
+            "Cash Balance:      {cash_balance}\n"
+            "Added Cash:        {added_cash}\n"
+            "Removed Cash:     ({removed_cash})\n"
+            "============================\n"
+            "Investment and Returns\n"
+            "----------------------------\n"
+            "Investment:        ({investment})\n"
+            "Returns:            {returns}\n"
+            "============================\n"
+            "Deposit\n"
+            "----------------------------\n"
+            "Deposit (Cr.):      {deposit_credit}\n"
+            "Deposit (Dr.):     ({deposit_debit})\n"
+            "============================\n"
+            "Total Cash Left:   {left_cash}\n"
+            "</pre>"
+        ).format(cash_balance = self.cash_balance,
+                added_cash = self.added_cash,
+                removed_cash = self.removed_cash,
+                investment = self.investment,
+                returns = self.returns,
+                deposit_credit = self.deposit_credit,
+                deposit_debit = self.deposit_debit,
+                left_cash = self.left_cash)
+
+                # Set the report text in the QTextEdit with HTML content
+                self.ui.daily_section_5.setHtml(report_template)
+        except Exception as ex:
+                self.show_message_box("Error", f"{ex}")
+
+    def backup_sql(self):
+        db_host = "localhost"
+        db_user = "root"
+        db_password = "akshat"
+        db_name = "loan_management"
+        mysqldump_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe"
+        
+        available_drive_letters = self.get_available_drive_letter()
+        preferred_drive_letters = ["D", "E", "H"]
+        usb_drive_path = None
+        for letter in preferred_drive_letters:
+            if letter in available_drive_letters:
+                usb_drive_path = f"{letter}:\\"
+                break
+    
+        if usb_drive_path is None:
+            self.show_message_box("Error", "No available USB drive found.")
+            return
+    
+        backup_file_path = os.path.join(usb_drive_path, "backup.sql")
+        os.environ["MYSQL_PWD"] = db_password
+        mysqldump_cmd = [
+            mysqldump_path,
+            "--host=" + db_host,
+            "--user=" + db_user,
+            db_name
+        ]
+        
+        try:
+            with open(backup_file_path, "w") as backup_file:
+                subprocess.run(mysqldump_cmd, stdout=backup_file)
+            QMessageBox.information(self, "Success", f"Backup created at: {str(backup_file_path)}")
+        except Exception as ex:
+            self.show_message_box("Error", f"{str(ex)}")
 
     def clear(self):
         self.ui.name_line.clear()
@@ -1002,6 +1629,16 @@ class MainWindow(QMainWindow):
         self.ui.location_line.clear()
         self.ui.jewellery_line.clear()
         self.ui.weight_line.clear()
+
+    def clear_alter(self):
+        self.ui.remove_line_11.clear()
+        self.ui.name_line_3.clear()
+        self.ui.father_line_3.clear()
+        self.ui.amount_line_3.clear()
+        self.ui.location_line_3.clear()
+        self.ui.jewellery_line_3.clear()
+        self.ui.date_line_3.clear()
+        self.ui.weight_line_3.clear()
     
 
     def show_message_box(self, title, message):
@@ -1014,5 +1651,5 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
      app = QApplication(sys.argv)
      window = MainWindow()
-     window.show()
+     window.showMaximized()
      sys.exit(app.exec())
