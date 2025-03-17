@@ -9,6 +9,7 @@ import random
 import joblib
 import string
 import ctypes
+import qdarkstyle
 from retrying import retry
 from PySide6.QtCore import QTimer
 from datetime import date, datetime, timedelta
@@ -23,7 +24,6 @@ from PySide6.QtCore import Qt, QStringListModel
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from decimal import Decimal
 from Custom_Widgets.Widgets import *  # Import the loadJsonStyle function
-
 
 
 # Configure logging
@@ -78,6 +78,16 @@ def capture_fingerprint():
     except KeyError as e:
         logging.error("Unexpected response format: %s", e)
         raise
+
+def get_resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 class AlignDelegate(QtWidgets.QStyledItemDelegate):
     def initStyleOption(self, option, index):
@@ -239,7 +249,10 @@ class MainWindow(QMainWindow):
          header.setFont(font)
          #==========================================================================
          #Loading Main Functionalities ===============================================
-         loadJsonStyle(self, self.ui)
+
+         loadJsonStyle(self, self.ui, jsonFiles = {
+            "c:\\Users\\jaksh\\OneDrive\\Desktop\\LoanPro\\style.json"
+                }) 
          self.update_active_tab(self.ui.dashbtn, 0)
          self.insert_current_date()
          self.generate_report()
