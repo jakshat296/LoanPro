@@ -9,7 +9,6 @@ import random
 import joblib
 import string
 import ctypes
-import qdarkstyle
 from retrying import retry
 from PySide6.QtCore import QTimer
 from datetime import date, datetime, timedelta
@@ -19,7 +18,7 @@ from remove_cash import LoginDialog
 import mysql.connector
 from PySide6 import QtCharts, QtWidgets, QtCore, QtGui
 from PySide6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QValueAxis, QBarCategoryAxis
-from PySide6.QtWidgets import QVBoxLayout, QMessageBox, QCompleter
+from PySide6.QtWidgets import QVBoxLayout, QMessageBox, QCompleter, QProgressBar
 from PySide6.QtCore import Qt, QStringListModel
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from decimal import Decimal
@@ -30,19 +29,15 @@ from Custom_Widgets.Widgets import *  # Import the loadJsonStyle function
 logging.basicConfig(filename='fingerprint_capture.log', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Function to get the IPv4 address
 def get_ipv4_address():
     try:
-        # Create a socket to get the local machine's hostname
         hostname = socket.gethostname()
-
-        # Get the IPv4 address corresponding to the hostname
         ipv4_address = socket.gethostbyname(hostname)
-
         return ipv4_address
     except socket.error as e:
         logging.error("Failed to get IPv4 address: %s", e)
         return None
-
 @retry(stop_max_attempt_number=3, wait_fixed=2000)
 def capture_fingerprint():
     ipv4_address = get_ipv4_address()
@@ -100,13 +95,16 @@ class MainWindow(QMainWindow):
          QMainWindow.__init__(self)
          self.ui = Ui_MainWindow()
          self.ui.setupUi(self)
+         #self.load_style(self.ui)
+
+         
  
          self.ui.dashbtn.clicked.connect(lambda: self.on_dashbtn_clicked())
          self.ui.addbtn.clicked.connect(lambda: self.on_addbtn_clicked())
          self.ui.depositbtn.clicked.connect(lambda: self.on_depositbtn_clicked())
          self.ui.removebtn.clicked.connect(lambda: self.on_removebtn_clicked())
          self.ui.viewbtn_2.clicked.connect(lambda: self.on_viewbtn_clicked())
-         self.ui.accountsbtn.clicked.connect(lambda: self.update_active_tab(self.ui.accountsbtn, 5))
+         self.ui.accountsbtn.clicked.connect(lambda: self.on_accountsbtn_clicked())
          self.ui.pushButton_15.clicked.connect(lambda: self.add_fingerprint())
          self.ui.pushButton_14.clicked.connect(lambda: self.add_record())
          self.ui.search_remove_2.clicked.connect(lambda: self.remove_record())
@@ -123,7 +121,7 @@ class MainWindow(QMainWindow):
          self.ui.tabWidget_2.currentChanged.connect(self.on_tab_changed)
          self.ui.tabWidget.currentChanged.connect(self.on_tab_changed_remove)
          self.ui.search_remove_8.clicked.connect(self.fetch_user_details)
-         self.ui.pushButton_16.clicked.connect(self.update_user_details)
+         self.ui.pushButton_17.clicked.connect(self.update_user_details)
          self.ui.search_remove_9.clicked.connect(self.accounts_report)
          self.ui.addcash_4.clicked.connect(self.show_add_cash_dialog)
          self.ui.removecash_4.clicked.connect(self.show_remove_cash_dialog)
@@ -249,32 +247,45 @@ class MainWindow(QMainWindow):
          header.setFont(font)
          #==========================================================================
          #Loading Main Functionalities ===============================================
-
          loadJsonStyle(self, self.ui, jsonFiles = {
-            "c:\\Users\\jaksh\\OneDrive\\Desktop\\LoanPro\\style.json"
-                }) 
-         self.update_active_tab(self.ui.dashbtn, 0)
+            self.get_styles_path()}) 
+         self.get_styles_path()
+         self.update_active_tab(self.ui.dashbtn)
+         self.ui.stackedWidget.setCurrentIndex(0)
          self.insert_current_date()
          self.generate_report()
          self.update_labels()
          self.update_charts()
          self.show()
 
+    def get_styles_path(self):
+        if getattr(sys, 'frozen', False):  # Running as an executable
+            base_path = sys._MEIPASS  # PyInstaller temp folder
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+
+        path = os.path.join(base_path, "style.json")
+        return path
+    
+
     def on_dashbtn_clicked(self):
-        self.update_active_tab(self.ui.dashbtn, 0)
+        self.update_active_tab(self.ui.dashbtn)
+        self.ui.stackedWidget.setCurrentWidget(self.ui.dashpage_2)
         self.generate_report()
         self.update_labels()
         self.update_charts()
 
     def on_addbtn_clicked(self):
-        self.update_active_tab(self.ui.addbtn, 1)
+        self.update_active_tab(self.ui.addbtn)
+        self.ui.stackedWidget.setCurrentWidget(self.ui.addpage_3)
         self.clear()
         today_date = datetime.today().strftime('%Y-%m-%d')
         self.ui.date_line.setText(today_date)
 
 
     def on_removebtn_clicked(self):
-        self.update_active_tab(self.ui.removebtn, 2)
+        self.update_active_tab(self.ui.removebtn)
+        self.ui.stackedWidget.setCurrentWidget(self.ui.removepage_2)
         today_date = datetime.today().strftime('%Y-%m-%d')
         self.ui.remove_line_7.setText(today_date)
         self.ui.remove_line.clear()
@@ -286,7 +297,8 @@ class MainWindow(QMainWindow):
         self.model_2.setHorizontalHeaderLabels(["Deposit Date", "Amount"])
 
     def on_depositbtn_clicked(self):
-        self.update_active_tab(self.ui.depositbtn, 3)
+        self.update_active_tab(self.ui.depositbtn)
+        self.ui.stackedWidget.setCurrentWidget(self.ui.depositpage_2)
         today_date = datetime.today().strftime('%Y-%m-%d')
         self.ui.remove_line_5.setText(today_date)
         self.ui.remove_line_4.clear()
@@ -298,7 +310,9 @@ class MainWindow(QMainWindow):
         self.model.setHorizontalHeaderLabels(["Deposit Date", "Amount"])
 
     def on_viewbtn_clicked(self):
-         self.update_active_tab(self.ui.viewbtn_2, 4)
+         self.update_active_tab(self.ui.viewbtn_2)
+         self.ui.stackedWidget.setCurrentWidget(self.ui.viewpage_2)
+         self.ui.invesbtn_5.setChecked(True)
          self.ui.remove_line_9.clear()
          self.ui.remove_line_10.clear()
          self.ui.remove_line_11.clear()
@@ -309,16 +323,21 @@ class MainWindow(QMainWindow):
          self.ui.stackedWidget_2.setCurrentIndex(0)
 
     def on_invesbtn_5_clicked(self):
-        self.ui.stackedWidget_2.setCurrentIndex(0)
+        self.ui.stackedWidget_2.setCurrentWidget(self.ui.page)
 
     def on_returnbtn_5_clicked(self):
-        self.ui.stackedWidget_2.setCurrentIndex(1)
+        self.ui.stackedWidget_2.setCurrentWidget(self.ui.page_2)
 
     def on_interestbtn_5_clicked(self):
-        self.ui.stackedWidget_2.setCurrentIndex(2)
+        self.ui.stackedWidget_2.setCurrentWidget(self.ui.page_3)
 
     def on_accountsbtn_clicked(self):
-        self.ui.stackedWidget.setCurrentIndex(5)
+        self.update_active_tab(self.ui.accountsbtn)
+        self.ui.stackedWidget.setCurrentWidget(self.ui.accountspage_2)
+        self.model_3.clear()
+        self.model_3.setHorizontalHeaderLabels(["Date", "Amount"])
+        self.ui.lineEdit_2.clear()
+        self.ui.label_9.setText("")
         self.ui.comboBox_5.setCurrentIndex(0)
 
     def show_add_cash_dialog(self):
@@ -351,7 +370,8 @@ class MainWindow(QMainWindow):
         dialog_1.login_button_1.clicked.connect(lambda: self.remove_cash(dialog_1))
         dialog_1.exec_()
 
-    def update_active_tab(self, active_button, page_index):
+
+    def update_active_tab(self, active_button):
         buttons = [self.ui.dashbtn, self.ui.addbtn, self.ui.removebtn, self.ui.depositbtn, self.ui.viewbtn_2, self.ui.accountsbtn]
         icons_inactive = {
              self.ui.dashbtn: ":/white icons/assets/icons/white/bar-chart.svg",
@@ -401,9 +421,7 @@ class MainWindow(QMainWindow):
                      border: none;
                  """)
                 button.setIcon(QIcon(icons_inactive[button]))
- 
-        # Change the page in the stacked widget
-        self.ui.stackedWidget.setCurrentIndex(page_index)
+        
 
     def connect_to_database(self):
         """Connect to the MySQL database and return the connection object."""
@@ -618,11 +636,11 @@ class MainWindow(QMainWindow):
             self.ui.graphicsView_3.setChart(returns_chart)
             self.ui.graphicsView.setChart(interest_chart)
 
-            self.ui.invesbtn_4.clicked.connect(lambda: self.ui.stackedWidget_5.setCurrentIndex(0))
+            self.ui.invesbtn_4.clicked.connect(lambda: self.ui.stackedWidget_5.setCurrentWidget(self.ui.investment_chart_4))
             self.ui.invesbtn_4.clicked.connect(lambda: self.ui.graphicsView_2.setChart(investment_chart))
-            self.ui.returnbtn_4.clicked.connect(lambda: self.ui.stackedWidget_5.setCurrentIndex(1))
+            self.ui.returnbtn_4.clicked.connect(lambda: self.ui.stackedWidget_5.setCurrentWidget(self.ui.return_chart_4))
             self.ui.returnbtn_4.clicked.connect(lambda: self.ui.graphicsView_3.setChart(returns_chart))
-            self.ui.interestbtn_4.clicked.connect(lambda: self.ui.stackedWidget_5.setCurrentIndex(2))
+            self.ui.interestbtn_4.clicked.connect(lambda: self.ui.stackedWidget_5.setCurrentWidget(self.ui.interest_chart_4))
             self.ui.interestbtn_4.clicked.connect(lambda: self.ui.graphicsView.setChart(interest_chart))
 
         except Exception as e:
@@ -846,21 +864,18 @@ class MainWindow(QMainWindow):
             try:
                 query = ""
                 if criteria == "Name":
-                    query = "SELECT * FROM all_records WHERE Name LIKE %s"
+                    query = "SELECT * FROM all_records WHERE Name LIKE %s order by date"
                     cursor.execute(query, (f"%{value}%",))
                 elif criteria == "Location":
-                    query = "SELECT * FROM all_records WHERE Location LIKE %s"
+                    query = "SELECT * FROM all_records WHERE Location LIKE %s order by date"
                     cursor.execute(query, (f"%{value}%",))
                 elif criteria == "Date":
-                    query = "SELECT * FROM all_records WHERE DATE(date) = %s"
+                    query = "SELECT * FROM all_records WHERE DATE(date) = %s order by date"
                     cursor.execute(query, (value,))
                 elif criteria == "Fingerprint":
                     isoTemplateToMatch = capture_fingerprint()
-                    print("akshat")
                     query = "SELECT fingerprint_data FROM fingerprint_table WHERE user_id IN (SELECT user_id FROM all_records WHERE Location LIKE %s)"
-                    print("akshat")
                     cursor.execute(query, (f"%{value}%",))
-                    print("akshat")
                     result = cursor.fetchall()
                     
                     ilist = []
@@ -900,13 +915,13 @@ class MainWindow(QMainWindow):
             try:
                 query = ""
                 if criteria == "Name":
-                    query = "SELECT * FROM removed_records WHERE Name LIKE %s"
+                    query = "SELECT * FROM removed_records WHERE Name LIKE %s order by date"
                     cursor.execute(query, (f"%{value}%",))
                 elif criteria == "Location":
-                    query = "SELECT * FROM removed_records WHERE Location LIKE %s"
+                    query = "SELECT * FROM removed_records WHERE Location LIKE %s order by date"
                     cursor.execute(query, (f"%{value}%",))
                 elif criteria == "Date":
-                    query = "SELECT * FROM removed_records WHERE Removed_DATE(date) = %s"
+                    query = "SELECT * FROM removed_records WHERE Removed_DATE(date) = %s order by date"
                     cursor.execute(query, (value,))
                 result = cursor.fetchall()
                 return result
@@ -952,7 +967,7 @@ class MainWindow(QMainWindow):
         if current_row != -1:
             return self.ui.tableWidget_exist_6.item(current_row, 0).text()
         return None
-    
+
     # Get selected user_id from the table
     def get_selected_user_id_remove(self):
         current_row = self.ui.tableWidget_exist_5.currentRow()
@@ -1136,7 +1151,9 @@ class MainWindow(QMainWindow):
             self.update_removed_records_interest(user_id, interest)
             self.update_removed_records_date(user_id, date_edit)
             QMessageBox.information(None, "Success", "Record removed successfully")
-            self.handle_remove_search()
+            criteria = self.ui.comboBox.currentText()
+            if criteria != "Fingerprint":
+                self.handle_remove_search()
         except Exception as e:
             QMessageBox.critical(None, "Database Error", str(e))
 
@@ -1258,13 +1275,13 @@ class MainWindow(QMainWindow):
                 
                 if result:
                     name, father_name, location, amount, type, date, weight = result
-                    self.ui.name_line_3.setText(name)
-                    self.ui.father_line_3.setText(father_name)
-                    self.ui.location_line_3.setText(location)
-                    self.ui.amount_line_3.setText(str(amount))
-                    self.ui.jewellery_line_3.setText(type)
-                    self.ui.date_line_3.setText(date.strftime('%Y-%m-%d'))  # Assuming date is a date object
-                    self.ui.weight_line_3.setText(str(weight))
+                    self.ui.name_line_4.setText(name)
+                    self.ui.father_line_4.setText(father_name)
+                    self.ui.location_line_4.setText(location)
+                    self.ui.amount_line_4.setText(str(amount))
+                    self.ui.jewellery_line_5.setText(type)
+                    self.ui.date_line_5.setText(date.strftime('%Y-%m-%d'))  # Assuming date is a date object
+                    self.ui.weight_line_4.setText(str(weight))
                 else:
                     QMessageBox.warning(self, "Error", "No record found for the provided User ID.")
             except Exception as e:
@@ -1279,13 +1296,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Input Error", "Please enter a User ID.")
             return
         
-        name = self.ui.name_line_3.text().strip()
-        father_name = self.ui.father_line_3.text().strip()
-        location = self.ui.location_line_3.text().strip()
-        amount = self.ui.amount_line_3.text().strip()
-        type = self.ui.jewellery_line_3.text().strip()
-        date = self.ui.date_line_3.text().strip()
-        weight = self.ui.weight_line_3.text().strip()
+        name = self.ui.name_line_4.text().strip()
+        father_name = self.ui.father_line_4.text().strip()
+        location = self.ui.location_line_4.text().strip()
+        amount = self.ui.amount_line_4.text().strip()
+        type = self.ui.jewellery_line_5.text().strip()
+        date = self.ui.date_line_5.text().strip()
+        weight = self.ui.weight_line_4.text().strip()
 
         if not all([name, father_name, location, amount, type, date, weight]):
             QMessageBox.warning(self, "Input Error", "Please fill in all fields.")
@@ -1645,13 +1662,13 @@ FROM (
 
     def clear_alter(self):
         self.ui.remove_line_11.clear()
-        self.ui.name_line_3.clear()
-        self.ui.father_line_3.clear()
-        self.ui.amount_line_3.clear()
-        self.ui.location_line_3.clear()
-        self.ui.jewellery_line_3.clear()
-        self.ui.date_line_3.clear()
-        self.ui.weight_line_3.clear()
+        self.ui.name_line_4.clear()
+        self.ui.father_line_4.clear()
+        self.ui.amount_line_4.clear()
+        self.ui.location_line_4.clear()
+        self.ui.jewellery_line_5.clear()
+        self.ui.date_line_5.clear()
+        self.ui.weight_line_4.clear()
     
 
     def show_message_box(self, title, message):
