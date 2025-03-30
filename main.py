@@ -9,18 +9,20 @@ import random
 import joblib
 import string
 import ctypes
+import json
 from retrying import retry
 from PySide6.QtCore import QTimer
 from datetime import date, datetime, timedelta
 from interface import *
 from add_cash import LoginDialog2
 from remove_cash import LoginDialog
+from settings_dialog import SettingsDialog
 import mysql.connector
 from PySide6 import QtCharts, QtWidgets, QtCore, QtGui
 from PySide6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QValueAxis, QBarCategoryAxis
-from PySide6.QtWidgets import QVBoxLayout, QMessageBox, QCompleter, QProgressBar
+from PySide6.QtWidgets import QVBoxLayout, QMessageBox, QCompleter, QProgressBar, QDialog, QApplication
 from PySide6.QtCore import Qt, QStringListModel
-from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QShortcut, QKeySequence
 from decimal import Decimal
 from Custom_Widgets.Widgets import *  # Import the loadJsonStyle function
 
@@ -95,10 +97,14 @@ class MainWindow(QMainWindow):
          QMainWindow.__init__(self)
          self.ui = Ui_MainWindow()
          self.ui.setupUi(self)
-         #self.load_style(self.ui)
-
          
- 
+         # Load settings
+         self.settings = self.load_settings()
+         
+         # Connect settings button
+         self.ui.settingbtn_4.clicked.connect(self.show_settings)
+         
+         # Connect other buttons
          self.ui.dashbtn.clicked.connect(lambda: self.on_dashbtn_clicked())
          self.ui.addbtn.clicked.connect(lambda: self.on_addbtn_clicked())
          self.ui.depositbtn.clicked.connect(lambda: self.on_depositbtn_clicked())
@@ -257,6 +263,10 @@ class MainWindow(QMainWindow):
          self.update_labels()
          self.update_charts()
          self.show()
+
+         # Initialize shortcuts
+         self.shortcuts = {}
+         self.setup_shortcuts()
 
     def get_styles_path(self):
         if getattr(sys, 'frozen', False):  # Running as an executable
@@ -425,24 +435,33 @@ class MainWindow(QMainWindow):
 
     def connect_to_database(self):
         """Connect to the MySQL database and return the connection object."""
-        connection = mysql.connector.connect(
-            host='localhost',
-            database='loan_management',
-            user='root',
-            password='akshat'
-        )
-        if connection.is_connected():
-            return connection
-        
+        try:
+            connection = mysql.connector.connect(
+                host=self.settings.get('db_host', 'localhost'),
+                database=self.settings.get('db_name', 'loan_management'),
+                user=self.settings.get('db_user', 'root'),
+                password=self.settings.get('db_password', 'akshat')
+            )
+            if connection.is_connected():
+                return connection
+        except Exception as e:
+            QMessageBox.critical(self, "Database Error", f"Failed to connect to database: {str(e)}")
+        return None
+    
     def update_labels(self):
         """Update the labels with the sum of amount and count of entries from the all_records table."""
         connection = self.connect_to_database()
         if connection:
             cursor = connection.cursor()
+            # Get the number division factor from settings
+            division_factor = self.settings.get('number_division', 1)
+            
             # Calculate the sum of amount
             cursor.execute("SELECT SUM(amount) FROM all_records")
             sum_amount = cursor.fetchone()[0]
             sum_amount = sum_amount if sum_amount else 0
+            # Apply division factor
+            sum_amount = sum_amount / division_factor
 
             # Set locale to Indian format
             locale.setlocale(locale.LC_ALL, 'en_IN')
@@ -462,6 +481,8 @@ class MainWindow(QMainWindow):
             cursor.execute("SELECT SUM(amount) FROM all_records WHERE DATE(date) = %s", (today_date,))
             sum_amount_today = cursor.fetchone()[0]
             sum_amount_today = sum_amount_today if sum_amount_today else 0
+            # Apply division factor
+            sum_amount_today = sum_amount_today / division_factor
 
             # Set locale to Indian format and add Indian currency symbol for today's amount
             formatted_amount_today = locale.format_string("%d", sum_amount_today, grouping=True)
@@ -478,6 +499,8 @@ class MainWindow(QMainWindow):
             cursor.execute("SELECT SUM(amount+interest) FROM removed_records WHERE removed_date = %s", (today_date,))
             sum_amount_returns_today = cursor.fetchone()[0]
             sum_amount_returns_today = sum_amount_returns_today if sum_amount_returns_today else 0
+            # Apply division factor
+            sum_amount_returns_today = sum_amount_returns_today / division_factor
 
             # Set locale to Indian format and add Indian currency symbol for today's returns amount
             formatted_amount_returns_today = locale.format_string("%d", sum_amount_returns_today, grouping=True)
@@ -494,6 +517,8 @@ class MainWindow(QMainWindow):
             cursor.execute("SELECT SUM(interest) FROM removed_records WHERE removed_date = %s", (today_date,))
             sum_interest_today = cursor.fetchone()[0]
             sum_interest_today = sum_interest_today if sum_interest_today else 0
+            # Apply division factor
+            sum_interest_today = sum_interest_today / division_factor
 
             # Set locale to Indian format and add Indian currency symbol for today's interest
             formatted_interest_today = locale.format_string("%d", sum_interest_today, grouping=True)
@@ -516,6 +541,7 @@ class MainWindow(QMainWindow):
                 series.append(bar_set)
 
                 chart = QChart()
+    
                 chart.addSeries(series)
                 chart.setTitle(title)
                 chart.setAnimationOptions(QChart.SeriesAnimations)
@@ -857,6 +883,27 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(None, "Error", str(e))
         return None
 
+    def convert_date_format(self, date_str):
+        """Convert date string to MySQL format (YYYY-MM-DD) based on settings"""
+        try:
+            date_format = self.settings.get('date_format', 'YYYY-MM-DD')
+            if date_format == 'YYYY-MM-DD':
+                return date_str
+            elif date_format == 'DD-MM-YYYY':
+                # Convert from DD-MM-YYYY to YYYY-MM-DD
+                day, month, year = date_str.split('-')
+                return f"{year}-{month}-{day}"
+            elif date_format == 'MM/DD/YYYY':
+                # Convert from MM/DD/YYYY to YYYY-MM-DD
+                month, day, year = date_str.split('/')
+                return f"{year}-{month}-{day}"
+            else:
+                # Default to YYYY-MM-DD if format is not recognized
+                return date_str
+        except Exception as e:
+            print(f"Error converting date format: {e}")
+            return date_str
+
     def search_records(self, criteria, value):
         connection = self.connect_to_database()
         if connection:
@@ -870,8 +917,10 @@ class MainWindow(QMainWindow):
                     query = "SELECT * FROM all_records WHERE Location LIKE %s order by date"
                     cursor.execute(query, (f"%{value}%",))
                 elif criteria == "Date":
+                    # Convert date to MySQL format
+                    mysql_date = self.convert_date_format(value)
                     query = "SELECT * FROM all_records WHERE DATE(date) = %s order by date"
-                    cursor.execute(query, (value,))
+                    cursor.execute(query, (mysql_date,))
                 elif criteria == "Fingerprint":
                     isoTemplateToMatch = capture_fingerprint()
                     query = "SELECT fingerprint_data FROM fingerprint_table WHERE user_id IN (SELECT user_id FROM all_records WHERE Location LIKE %s)"
@@ -907,7 +956,7 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.critical(None, "Database Error", "Failed to connect to the database.")
             return []
-        
+
     def search_removed_records(self, criteria, value):
         connection = self.connect_to_database()
         if connection:
@@ -921,8 +970,10 @@ class MainWindow(QMainWindow):
                     query = "SELECT * FROM removed_records WHERE Location LIKE %s order by date"
                     cursor.execute(query, (f"%{value}%",))
                 elif criteria == "Date":
-                    query = "SELECT * FROM removed_records WHERE Removed_DATE(date) = %s order by date"
-                    cursor.execute(query, (value,))
+                    # Convert date to MySQL format
+                    mysql_date = self.convert_date_format(value)
+                    query = "SELECT * FROM removed_records WHERE DATE(removed_date) = %s order by date"
+                    cursor.execute(query, (mysql_date,))
                 result = cursor.fetchall()
                 return result
             except Exception as e:
@@ -1106,10 +1157,11 @@ class MainWindow(QMainWindow):
                     # Calculate the number of days between the initial date and the current date
                     time_diff = (current_date - initial_date).days
                     time_in_years = time_diff / 365
-                    interest_rate = 0.36
                     
-                    # Calculate the simple interest (36% annually)
-                    interest_rate = 0.36
+                    # Use the interest rate from settings
+                    interest_rate = self.settings.get('interest_rate', 36) / 100
+                    
+                    # Calculate the simple interest
                     interest = amount * interest_rate * time_in_years
                     interest = str(round(interest))
                     
@@ -1490,12 +1542,12 @@ FROM (
             self.show_message_box("Error", f"{exception1}")
 
     def get_available_drive_letter(self):
-        used_drive_letters = set()
+        """Get the first available USB drive letter"""
         for drive in string.ascii_uppercase:
             drive_type = ctypes.windll.kernel32.GetDriveTypeW(f"{drive}:\\")
             if drive_type == 2:  # Drive is a removable storage (like USB)
-                used_drive_letters.add(drive)
-        return used_drive_letters
+                return f"{drive}:\\"
+        return "D:\\"  # Default to D: if no USB drive is found
 
     def generate_report(self):
         try:
@@ -1618,36 +1670,24 @@ FROM (
                 self.show_message_box("Error", f"{ex}")
 
     def backup_sql(self):
-        db_host = "localhost"
-        db_user = "root"
-        db_password = "akshat"
-        db_name = "loan_management"
+        db_host = self.settings.get('db_host', 'localhost')
+        db_user = self.settings.get('db_user', 'root')
+        db_password = self.settings.get('db_password', 'akshat')
+        db_name = self.settings.get('db_name', 'loan_management')
         mysqldump_path = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe"
         
-        available_drive_letters = self.get_available_drive_letter()
-        preferred_drive_letters = ["D", "E", "H"]
-        usb_drive_path = None
-        for letter in preferred_drive_letters:
-            if letter in available_drive_letters:
-                usb_drive_path = f"{letter}:\\"
-                break
-    
-        if usb_drive_path is None:
-            self.show_message_box("Error", "No available USB drive found.")
-            return
-    
-        backup_file_path = os.path.join(usb_drive_path, "backup.sql")
-        os.environ["MYSQL_PWD"] = db_password
-        mysqldump_cmd = [
-            mysqldump_path,
-            "--host=" + db_host,
-            "--user=" + db_user,
-            db_name
-        ]
+        # Use backup location from settings
+        backup_location = self.settings.get('backup_location', 'D:\\')
+        backup_file_path = os.path.join(backup_location, "backup.sql")
         
         try:
             with open(backup_file_path, "w") as backup_file:
-                subprocess.run(mysqldump_cmd, stdout=backup_file)
+                subprocess.run([
+                    mysqldump_path,
+                    f"--host={db_host}",
+                    f"--user={db_user}",
+                    db_name
+                ], stdout=backup_file)
             QMessageBox.information(self, "Success", f"Backup created at: {str(backup_file_path)}")
         except Exception as ex:
             self.show_message_box("Error", f"{str(ex)}")
@@ -1677,6 +1717,97 @@ FROM (
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
         msg_box.exec_()
+
+    def load_settings(self):
+        """Load settings from the JSON file"""
+        settings_file = "settings.json"
+        if os.path.exists(settings_file):
+            try:
+                with open(settings_file, 'r') as f:
+                    settings = json.load(f)
+                    # Set default values if settings are missing
+                    defaults = {
+                        "db_host": "localhost",
+                        "db_name": "loan_management",
+                        "db_user": "root",
+                        "db_password": "akshat",
+                        "interest_rate": 36,
+                        "backup_location": self.get_available_drive_letter(),  # Get default USB drive
+                        "auto_backup": False,
+                        "backup_frequency": 24,
+                        "date_format": "YYYY-MM-DD",
+                        "shortcut_dashboard": "Ctrl+1",
+                        "shortcut_add_record": "Ctrl+2",
+                        "shortcut_remove_record": "Ctrl+3",
+                        "shortcut_add_deposit": "Ctrl+4",
+                        "shortcut_view_records": "Ctrl+5",
+                        "shortcut_accounts": "Ctrl+6"
+                    }
+                    # Update missing settings with defaults
+                    for key, value in defaults.items():
+                        if key not in settings:
+                            settings[key] = value
+                    return settings
+            except Exception as e:
+                print(f"Error loading settings: {e}")
+                return {}
+        return {}
+
+    def show_settings(self):
+        """Show the settings dialog and handle the result"""
+        dialog = SettingsDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            # Reload settings after they're saved
+            self.settings = self.load_settings()
+            # Update UI elements based on new settings
+            self.update_settings_dependent_ui()
+            # Re-setup shortcuts with new settings
+            self.setup_shortcuts()
+
+    def update_settings_dependent_ui(self):
+        """Update UI elements that depend on settings"""
+        # Update interest rate label if it exists
+        if hasattr(self.ui, 'interest_rate_label'):
+            self.ui.interest_rate_label.setText(f"Current Interest Rate: {self.settings.get('interest_rate', 36)}%")
+        
+        # Remove font settings, table row heights, and alternating colors updates
+
+    def setup_shortcuts(self):
+        """Setup keyboard shortcuts for navigation"""
+        # Remove existing shortcuts
+        for shortcut in self.shortcuts.values():
+            shortcut.setParent(None)
+        self.shortcuts.clear()
+
+        # Create new shortcuts
+        shortcut_configs = {
+            "dashboard": (self.settings.get("shortcut_dashboard", "Ctrl+1"), self.on_dashbtn_clicked),
+            "add_record": (self.settings.get("shortcut_add_record", "Ctrl+2"), self.on_addbtn_clicked),
+            "remove_record": (self.settings.get("shortcut_remove_record", "Ctrl+3"), self.on_removebtn_clicked),
+            "add_deposit": (self.settings.get("shortcut_add_deposit", "Ctrl+4"), self.on_depositbtn_clicked),
+            "view_records": (self.settings.get("shortcut_view_records", "Ctrl+5"), self.on_viewbtn_clicked),
+            "accounts": (self.settings.get("shortcut_accounts", "Ctrl+6"), self.on_accountsbtn_clicked)
+        }
+
+        for name, (key, slot) in shortcut_configs.items():
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.activated.connect(slot)
+            self.shortcuts[name] = shortcut
+
+    def connect_to_database(self):
+        """Connect to the MySQL database and return the connection object."""
+        try:
+            connection = mysql.connector.connect(
+                host=self.settings.get('db_host', 'localhost'),
+                database=self.settings.get('db_name', 'loan_management'),
+                user=self.settings.get('db_user', 'root'),
+                password=self.settings.get('db_password', 'akshat')
+            )
+            if connection.is_connected():
+                return connection
+        except Exception as e:
+            QMessageBox.critical(self, "Database Error", f"Failed to connect to database: {str(e)}")
+        return None
 
 if __name__ == "__main__":
      app = QApplication(sys.argv)
